@@ -1,9 +1,14 @@
 # Warren → Kubernetes Migration Design
 
-**Status:** Design — pre-implementation  
+**Status:** Design record — architecture decisions. **Decisions #2 and #3 below
+are REVISED by** [`k8s-migration-plan.md`](./k8s-migration-plan.md) **(2026-07-09).**
+Burrow is not eliminated/archived — it is demoted to one provider (`LocalProvider`)
+behind a `RuntimeProvider` contract, with K8s as the first-class scale backend. Read
+the plan for the current model; this doc's architecture reasoning (pod-per-run,
+K3s, init container, pod-log streaming, `run_inbox`) still stands.
 **Date:** 2026-07-07  
-**Author:** derived from postmortem `sync/2026-07-07-warren-deployed-oom-crash-loop-postmortem.md`  
-**Scope:** Warren control plane + run dispatch; burrow repo archived
+**Author:** derived from postmortem `notes/2026-07-07-warren-deployed-oom-crash-loop-postmortem.md`  
+**Scope:** Warren control plane + run dispatch
 
 ---
 
