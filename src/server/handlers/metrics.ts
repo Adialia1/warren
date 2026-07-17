@@ -2,10 +2,12 @@
  * `GET /metrics` — Prometheus exposition endpoint (warren observability
  * Phase 1).
  *
- * Auth-exempt (like `/healthz`) so Fly's managed Prometheus can scrape it over
- * the private network without a bearer token; the body carries no secrets
- * (aggregate counts + counters only). Fly scrapes this when `fly.toml` declares
- * a `[[metrics]]` block pointing at `/metrics`.
+ * Bearer-gated like the rest of the API (warren-682a): behind a public
+ * Ingress the scrape surface leaks operational shape (run counts, pod
+ * phases, queue depth), so the historical Fly-era auth exemption is gone.
+ * In-cluster Prometheus sends the control-plane token via the
+ * ServiceMonitor's `authorization.credentials`
+ * (deploy/k8s/servicemonitor.yaml).
  *
  * Two sources, assembled per scrape:
  *   - **Gauges** read live from SQLite (`countRunsByState` / `aggregateRunCost`,
@@ -26,6 +28,7 @@ import {
 	type PromMetric,
 	renderPrometheus,
 } from "../../observability/prometheus.ts";
+import { buildPodPhaseMetrics } from "../../runtime/k8s/pod-metrics.ts";
 import { textResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 
@@ -53,6 +56,12 @@ export function metricsHandler(deps: ServerDeps): RouteHandler {
 		metrics.push(
 			gauge("warren_active_bridges", "Currently-attached run-stream bridges.", deps.bridges.size()),
 		);
+
+		if (deps.podMetrics !== undefined) {
+			// K8s pod-phase gauges, read live from the pod-watcher cache at scrape
+			// (pl-829f step 16). Absent under LocalProvider — nothing appended.
+			metrics.push(...buildPodPhaseMetrics(deps.podMetrics.metricsSnapshot()));
+		}
 
 		if (deps.metricsRegistry !== undefined) {
 			metrics.push(...countersToMetrics(deps.metricsRegistry.snapshot()));

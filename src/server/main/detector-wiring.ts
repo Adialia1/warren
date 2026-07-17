@@ -31,7 +31,6 @@
  *   recovery. Opt-out via `WARREN_CONVERSATION_IDLE_DISABLED=1`.
  */
 
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
 import type { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { createPrMergeChecker } from "../../plan-runs/index.ts";
@@ -52,8 +51,10 @@ import {
 	type PauseDetectorHandle,
 	type RunEventBroker,
 	type WatchdogHandle,
+	type WatchdogReap,
 } from "../../runs/index.ts";
 import { bootOpsStatsWorker, type OpsStatsWorkerHandle } from "../../runs/ops-stats.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
@@ -99,7 +100,12 @@ export function bootPauseDetectorFromEnv(input: PauseDetectorWiringInput): Pause
 export interface MergePollerWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * Resolved runtime provider — threaded into the planner spawnRun. Required
+	 * since warren-c42c: the spawn seam is provider-only, so the merge-poller
+	 * dispatch must carry the boot-selected provider.
+	 */
+	readonly runtimeProvider: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -128,7 +134,7 @@ export function bootConversationMergePollerFromEnv(
 	const tickMs = parseIntEnv(env, "WARREN_MERGE_POLLER_TICK_MS", 30_000);
 	const dispatch = createMergePollerDispatch({
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
+		runtimeProvider: input.runtimeProvider,
 		bridges: input.bridges,
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,
@@ -201,9 +207,23 @@ export function bootConversationIdleDetectorFromEnv(
 export interface WatchdogWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * The reap seam the watchdog force-fails a hung run through (warren-1fce /
+	 * warren-5a3f). Pre-bound by the boot composition root (`src/server/main/index.ts`)
+	 * to `reapRun` with the local burrow client applied, so this wiring module holds
+	 * no burrow client of its own. Collapses to plain `reapRun` once reap sheds the
+	 * client (warren-fbbf).
+	 */
+	readonly reap: WatchdogReap;
 	readonly broker: RunEventBroker;
 	readonly autoOpenPr: AutoOpenPrConfig;
+	/**
+	 * Runtime-provider seam (warren-c531 / warren-1fce). Threaded into the watchdog
+	 * tick so its graceful cancel of a hung run and the force-fail reap's
+	 * finalize + terminate route through `provider.*` on the ACTIVE backend.
+	 * Required — the tick no longer constructs its own burrow-backed provider.
+	 */
+	readonly runtimeProvider: RuntimeProvider;
 	readonly logger: Logger;
 	readonly now?: () => Date;
 }
@@ -213,9 +233,13 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 	const config = loadWatchdogConfigFromEnv(env);
 	const handle = bootWatchdog({
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
 		broker: input.broker,
 		autoOpenPr: input.autoOpenPr,
+		runtimeProvider: input.runtimeProvider,
+		// Reap seam pre-bound by the boot composition root with the burrow client reap
+		// still needs for its workspace reads, so this wiring stays burrow-free
+		// (warren-1fce / warren-5a3f).
+		reap: input.reap,
 		heartbeatTimeoutMs: config.heartbeatTimeoutMs,
 		tickMs: config.tickMs,
 		disabled: !config.enabled,
@@ -242,7 +266,12 @@ export interface BackgroundDetectorWiringInput {
 	readonly env: EnvLike;
 	readonly adapter: DrizzleAdapter;
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * The reap seam the watchdog force-fails through (warren-5a3f). Pre-bound by
+	 * the boot composition root with the local burrow client applied, so this
+	 * wiring module never imports the burrow client.
+	 */
+	readonly reap: WatchdogReap;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
@@ -250,6 +279,12 @@ export interface BackgroundDetectorWiringInput {
 	readonly projectSpawn: SpawnFn;
 	readonly seedsCli: SeedsCliDeps;
 	readonly autoOpenPr: AutoOpenPrConfig;
+	/**
+	 * Runtime-provider seam — forwarded to the watchdog tick and the merge-poller
+	 * planner spawn. Required since warren-c42c: the merge-poller dispatch routes
+	 * through the provider-only spawn seam.
+	 */
+	readonly runtimeProvider: RuntimeProvider;
 	readonly runBranchPrefixDefault?: string;
 	readonly logger: Logger;
 	readonly now?: () => Date;
@@ -286,16 +321,17 @@ export function bootBackgroundDetectors(
 	const watchdog = bootWatchdogFromEnv({
 		env: input.env,
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
+		reap: input.reap,
 		broker: input.broker,
 		autoOpenPr: input.autoOpenPr,
+		runtimeProvider: input.runtimeProvider,
 		logger: input.logger,
 		...now,
 	});
 	const mergePoller = bootConversationMergePollerFromEnv({
 		env: input.env,
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
+		runtimeProvider: input.runtimeProvider,
 		bridges: input.bridges,
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,

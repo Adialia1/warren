@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gitRepoContextScrubEnv, warrenCommitIdentityEnv } from "../bot-identity.ts";
 import { defaultPlotSyncer } from "./sync.ts";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -69,8 +70,17 @@ describe("defaultPlotSyncer.sync", () => {
 		writeFileSync(join(plotDir, "plot-1.events.jsonl"), '{"event":"created"}\n');
 
 		const spawnCalls: string[][] = [];
-		const spawn = async (cmd: readonly string[]) => {
+		const commitEnvs: (Record<string, string | undefined> | undefined)[] = [];
+		const statusEnvs: (Record<string, string | undefined> | undefined)[] = [];
+		const pushEnvs: (Record<string, string | undefined> | undefined)[] = [];
+		const spawn = async (
+			cmd: readonly string[],
+			opts: { cwd: string; timeoutMs?: number; env?: Record<string, string | undefined> },
+		) => {
 			spawnCalls.push(cmd as string[]);
+			if (cmd.includes("commit")) commitEnvs.push(opts.env);
+			if (cmd.includes("status")) statusEnvs.push(opts.env);
+			if (cmd.includes("push")) pushEnvs.push(opts.env);
 			if (cmd.includes("status")) {
 				return { stdout: " M .plot/plot-1.json\n", stderr: "", exitCode: 0 };
 			}
@@ -114,6 +124,15 @@ describe("defaultPlotSyncer.sync", () => {
 			expect(hasCommand("add")).toBe(true);
 			expect(hasCommand("commit")).toBe(true);
 			expect(hasCommand("push")).toBe(true);
+			// warren-035c: the plot-sync commit pins the bot identity in env too so
+			// an inherited GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c` config.
+			// warren-23dd: it also composes the repo-context GIT_* scrub (keys
+			// present-and-undefined) so a leaked GIT_DIR can't divert the commit.
+			expect(commitEnvs).toEqual([{ ...gitRepoContextScrubEnv(), ...warrenCommitIdentityEnv() }]);
+			// warren-23dd: the non-commit git calls in the same flow carry the
+			// scrub alone (status / push shown here as representatives).
+			expect(statusEnvs).toEqual([gitRepoContextScrubEnv()]);
+			expect(pushEnvs).toEqual([gitRepoContextScrubEnv()]);
 
 			// Verify PR open and merge requests
 			expect(fetchCalls).toHaveLength(2);

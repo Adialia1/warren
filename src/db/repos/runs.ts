@@ -10,7 +10,7 @@
  * the burrow IDs are written back once we have them.
  */
 
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NotFoundError, StateTransitionError, ValidationError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
@@ -180,6 +180,42 @@ export class RunsRepo {
 		const row = await this.get(id);
 		if (!row) throw new NotFoundError(`run not found: ${id}`);
 		return row;
+	}
+
+	/**
+	 * Hard-delete a run row that never reached the runtime (warren-a0a2).
+	 *
+	 * The scheduler's bounded-retry GC calls this to drop the transient
+	 * `never_started` rows a persistently-unreachable runtime would otherwise
+	 * mint one-per-tick, so the runs list isn't flooded during an outage. It
+	 * is deliberately narrow:
+	 *
+	 *   - Guarded to `state=failed` + `failureReason=never_started`. Any other
+	 *     row (a real queued/running/succeeded run, or a `failed` run that
+	 *     actually dispatched) is left untouched and the method returns false.
+	 *   - `events.run_id` carries no `ON DELETE` cascade, so the write-through
+	 *     event rows are cleared first, then the run row, inside one
+	 *     transaction. `triggers.last_run_id` / `plan_run_children.run_id`
+	 *     (both `ON DELETE SET NULL`) and `run_inbox` (`CASCADE`) fall away on
+	 *     their own; a never_started cron retry has none of them anyway.
+	 *
+	 * Returns true when a row was deleted, false when the id was missing or
+	 * the guard rejected it.
+	 */
+	async deleteNeverStarted(id: string): Promise<boolean> {
+		return this.adapter.runInTransaction(async (tx) => {
+			const txDb = tx.drizzle as SqliteDrizzleDb;
+			const runs = tx.schema.runs;
+			const events = tx.schema.events;
+			const existing = await tx.pickOne<RunRow>(txDb.select().from(runs).where(eq(runs.id, id)));
+			if (!existing) return false;
+			if (existing.state !== "failed" || existing.failureReason !== "never_started") {
+				return false;
+			}
+			await tx.runWrite(txDb.delete(events).where(eq(events.runId, id)));
+			await tx.runWrite(txDb.delete(runs).where(eq(runs.id, id)));
+			return true;
+		});
 	}
 
 	/** Read/query methods (warren-ac7f); bodies live in runs-queries.ts. */
@@ -411,58 +447,6 @@ export class RunsRepo {
 			this.db.update(this.runs).set({ prUrl }).where(eq(this.runs.id, id)),
 		);
 		return { ...current, prUrl };
-	}
-
-	/**
-	 * Project-affinity probe for `placeFor` (warren-135b / pl-9ba1 step 2):
-	 * the most-recent run that succeeded against this project AND has a
-	 * recorded `workerId`. Returns null if the project has no successful
-	 * runs yet, or if no successful run was tagged with a worker (rows
-	 * written before pl-9ba1 step 4 wired this in). Newest-first by
-	 * `endedAt` so a recent run wins over an older one even if the older
-	 * one started later in startedAt order.
-	 */
-	async mostRecentSucceededWithWorker(projectId: string): Promise<RunRow | null> {
-		const row = await this.adapter.pickOne(
-			this.db
-				.select()
-				.from(this.runs)
-				.where(
-					and(
-						eq(this.runs.projectId, projectId),
-						eq(this.runs.state, "succeeded"),
-						isNotNull(this.runs.workerId),
-					),
-				)
-				.orderBy(desc(this.runs.endedAt), asc(this.runs.id))
-				.limit(1),
-		);
-		return row ?? null;
-	}
-
-	/**
-	 * In-flight load per worker for the least-loaded leg of `placeFor`
-	 * (warren-135b / pl-9ba1 step 2). Counts `queued` + `running` runs
-	 * grouped by `workerId`. Rows with a null `workerId` (legacy or
-	 * unplaced) are excluded. Result is keyed by worker name; workers
-	 * with zero in-flight runs are absent (the caller defaults to 0).
-	 */
-	async countInflightByWorker(): Promise<Map<string, number>> {
-		const rows = await this.adapter.pickAll<{ workerId: string | null; count: number | string }>(
-			this.db
-				.select({
-					workerId: this.runs.workerId,
-					count: sql<number>`count(*)`.as("count"),
-				})
-				.from(this.runs)
-				.where(and(isNotNull(this.runs.workerId), inArray(this.runs.state, ["queued", "running"])))
-				.groupBy(this.runs.workerId),
-		);
-		const out = new Map<string, number>();
-		for (const r of rows) {
-			if (r.workerId !== null) out.set(r.workerId, Number(r.count));
-		}
-		return out;
 	}
 
 	/** CI-fixer queries (warren-0b75); bodies live in runs-ci-fixer.ts. */

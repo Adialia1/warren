@@ -7,38 +7,22 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { SpawnRunInput, SpawnRunResult } from "../runs/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { BridgeRegistry } from "../server/types.ts";
 import { createWarrenConfigCache } from "../warren-config/index.ts";
 import { createPlanRunSpawn } from "./dispatch.ts";
 
 const NOW = new Date("2026-05-18T00:00:00.000Z");
 
-function stubFetch(): typeof fetch {
-	return (async () =>
-		new Response(JSON.stringify({ error: { code: "x", message: "stub" } }), {
-			status: 404,
-		})) as unknown as typeof fetch;
-}
-
-function makeBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stubFetch(),
-	});
-}
-
-async function makePool(repos: Repos): Promise<BurrowClientPool> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register("local", makeBurrowClient());
-	return pool;
-}
+// Identity-only runtime provider (warren-c42c). `createPlanRunSpawn` threads it
+// straight into `spawnRun`; these tests use a stub `spawnRunFn`, so the provider
+// is never invoked — only its identity is asserted.
+const RUNTIME_PROVIDER = { kind: "stub" } as unknown as RuntimeProvider;
 
 function makeBridges(): BridgeRegistry {
 	return {
@@ -109,9 +93,13 @@ describe("createPlanRunSpawn", () => {
 			};
 		};
 
+		// Identity-only stub — asserts the SAME provider instance reaches
+		// spawnRun (warren-c531 follow-up: a dropped provider falls back to
+		// the burrow-backed LocalProvider, unusable under WARREN_RUNTIME=k8s).
+		const runtimeProvider = { kind: "stub" } as unknown as RuntimeProvider;
 		const spawn = createPlanRunSpawn({
 			repos,
-			burrowClientPool: await makePool(repos),
+			runtimeProvider,
 			bridges: makeBridges(),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({
@@ -139,6 +127,7 @@ describe("createPlanRunSpawn", () => {
 		expect(captured[0]?.plotId).toBe("plot_xyz");
 		expect(captured[0]?.trigger).toBe("plan-run");
 		expect(captured[0]?.dispatcherHandle).toBe(planRun.dispatcherHandle);
+		expect(captured[0]?.runtimeProvider).toBe(runtimeProvider);
 	});
 
 	test("routes spawn to the execution project and pins seedProjectId to coordination (warren-d9f3)", async () => {
@@ -179,7 +168,7 @@ describe("createPlanRunSpawn", () => {
 
 		const spawn = createPlanRunSpawn({
 			repos,
-			burrowClientPool: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({
@@ -250,7 +239,7 @@ describe("createPlanRunSpawn", () => {
 
 		const spawn = createPlanRunSpawn({
 			repos,
-			burrowClientPool: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({

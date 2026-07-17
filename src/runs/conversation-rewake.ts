@@ -150,7 +150,7 @@ export type RewakeConversationInput = {
 } & Pick<
 	SpawnRunInput,
 	| "repos"
-	| "burrowClientPool"
+	| "runtimeProvider"
 	| "trigger"
 	| "providerOverride"
 	| "modelOverride"
@@ -245,7 +245,7 @@ function buildRewakeSpawnInput(
 	const { plotId } = target;
 	return {
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
+		runtimeProvider: input.runtimeProvider,
 		agentName: target.priorRun.agentName,
 		projectId: target.projectId,
 		prompt,

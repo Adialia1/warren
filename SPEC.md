@@ -17,7 +17,9 @@ V1 scope is the **manual run path** plus the **cron half of the scheduler**: con
 
 Warren is a self-hostable control plane for ephemeral coding agents. A user points it at a GitHub repo, picks an agent, writes a prompt; warren spawns the agent inside a sandbox, streams events back to the UI, lets the user steer mid-run, then pushes the workspace branch. **One container, one volume, one HTTP API, one UI.**
 
-The fresh-install path is standalone: the built-in `claude-code` agent ships inline, so a user with a GitHub URL and an Anthropic key can dispatch a run end-to-end with no other tooling. Two additional coding-agent runtimes ship inline alongside it — `sapling` (steerable harness) and `pi` (multi-provider, with per-run cost reporting). Warren also bundles a small set of [os-eco](https://github.com/jayminwest/os-eco) tools as opt-in built-in features — versioned prompt libraries via canopy, persistent agent memory via mulch, an integrated issue queue via seeds, and a shared coordination substrate via plot (§11.O) — each surfaced only when the project or operator opts in. The runtime substrate is [burrow](https://github.com/jayminwest/burrow), a sibling process inside the container that warren talks to over a unix socket.
+The fresh-install path is standalone: the built-in `claude-code` agent ships inline, so a user with a GitHub URL and an Anthropic key can dispatch a run end-to-end with no other tooling. Two additional coding-agent runtimes ship inline alongside it — `sapling` (steerable harness) and `pi` (multi-provider, with per-run cost reporting). Warren also bundles a small set of [os-eco](https://github.com/jayminwest/os-eco) tools as opt-in built-in features — versioned prompt libraries via canopy, persistent agent memory via mulch, an integrated issue queue via seeds, and a shared coordination substrate via plot (§11.O) — each surfaced only when the project or operator opts in.
+
+Warren dispatches through a swappable **runtime provider**, chosen once at boot by `WARREN_RUNTIME` behind the `RuntimeProvider` contract (post-V1; `src/runtime/`, design docs under `docs/design/`). The default `local` provider uses [burrow](https://github.com/jayminwest/burrow) as its sandbox substrate — a sibling process inside the container that warren talks to over a unix socket — which is the topology this document describes throughout. A second `k8s` provider runs each agent as its own Kubernetes pod with no burrow, for cluster scale-out ([`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md)); it supersedes the multi-worker burrow model §5.4 originally sketched. Burrow is thus the LocalProvider's substrate, not a hard warren dependency.
 
 V1 is single-user, single-host: clone warren, `docker compose up`, browser at `localhost:8080`. The same image runs on Fly.io with a volume and three secrets. No cross-tenant story, no SaaS, no auth beyond a bearer token.
 
@@ -93,7 +95,8 @@ Warren is a thin coordinator — most of the value is in the runtime plus whiche
 
 ### 3.3 The seams that matter
 
-- **Burrow HTTP API** (burrow's `pl-5b40` / `burrow-1d64`) — warren never imports burrow as a library. HTTP only, so warren and burrow can be independent processes inside one container.
+- **RuntimeProvider contract** (post-V1; `src/runtime/contract.ts`) — the load-bearing seam for *where* a run executes. Warren's domain (`src/runs/*`) speaks only this eight-method contract; the backend (burrow-backed `LocalProvider` or pod-per-run `K8sProvider`) is selected at boot by `WARREN_RUNTIME`. No burrow-id, pod name, socket, or host path crosses it. This generalizes the original "Burrow HTTP API" seam below into a provider abstraction.
+- **Burrow HTTP API** (burrow's `pl-5b40` / `burrow-1d64`) — how the `local` runtime provider talks to its sandbox: warren never imports burrow as a library, HTTP only, so warren and burrow can be independent processes inside one container. Under the `k8s` provider this seam is absent (the pod boundary + K8s API replace it).
 - **Canopy as agent source** — agents are not warren records, they are canopy prompts. Warren is a read-mostly consumer of canopy.
 - **CLI shell-out for mulch/seeds/canopy** — these tools are git-native, file-locked, atomic. Warren does not embed their state; it shells out.
 - **HTTP API for warren itself** — the UI is one consumer; ad-hoc scripts and future orchestrators are others.
@@ -227,7 +230,9 @@ Warren restarts shouldn't kill in-flight agent runs. Burrow's SQLite + run loop 
 
 ### 5.3 Sandbox nesting
 
-Burrow runs `bwrap`-isolated agents inside the warren container. The container needs the four flags from `mulch:mx-94901b` / `mulch:mx-c085ba`:
+> **Scope: the `local` runtime provider only.** Nested bwrap and its four flags exist to let burrow's user-namespace sandboxes come up inside the outer container. The `k8s` provider has no nested sandbox — the pod boundary *is* the isolation, kubelet enforces resources via cgroups v2, and all four flags disappear (`runAsNonRoot`, `drop: [ALL]`, `seccompProfile: RuntimeDefault` instead). See [`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md) and `docs/design/k8s-migration.md` §2.
+
+Under the `local` provider, burrow runs `bwrap`-isolated agents inside the warren container. The container needs the four flags from `mulch:mx-94901b` / `mulch:mx-c085ba`:
 
 ```yaml
 security_opt:
@@ -240,6 +245,21 @@ cap_add: [SYS_ADMIN]
 Verified empirically on Docker 28.4 / Ubuntu 24.04. Same recipe applies to Fly.io machines.
 
 ### 5.4 Multi-worker model
+
+> **RETIRED — superseded by the `k8s` runtime provider (post-V1).** The
+> multi-worker burrow model below (a `[[workers]]` registry, `BurrowClientPool`,
+> placement rules, fan-out reads, the `workers` + `burrows` tables, the
+> `/workers` + `/burrows` HTTP surface, `src/server/probe.ts`) was the original
+> answer to "lift the single-host ceiling." It was **removed** during the K8s
+> migration: horizontal scale is now the `k8s` provider (each run a pod,
+> cluster-scheduled, with admission caps in §3.3-of-the-K8s-design instead of
+> placement heuristics). The code, tables, and endpoints described here no
+> longer exist on the branch; `runs.burrow_id` / `burrow_run_id` / `worker_id`
+> are nullified for new rows and kept only for historical ones. The subsection
+> is preserved verbatim below as a V1 design record — do not treat it as current
+> behavior. See [`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md) and
+> `docs/design/k8s-migration.md` (§1.1, §3.3) / `k8s-migration-plan.md` for the
+> supersession.
 
 Zero-config deployment is unchanged: one warren container, one
 in-container `burrow serve` over `/var/run/burrow.sock` (§5.1).
@@ -1824,8 +1844,8 @@ two variables injected via `burrows.up`:
 
 | Variable | Value | Producer |
 |---|---|---|
-| `PLOT_ID` | `<run.plot_id>` | `composePlotEnv` (`src/runs/spawn.ts`) |
-| `PLOT_ACTOR` | `agent:<agent-name>:<run-id>` | `composePlotEnv` |
+| `PLOT_ID` | `<run.plot_id>` | `composeRunEnv` (`src/runs/spawn/dispatch.ts`) |
+| `PLOT_ACTOR` | `agent:<agent-name>:<run-id>` | `composeRunEnv` |
 
 The `plot` CLI inside the sandbox (installed globally in the Dockerfile,
 mirroring the `burrow-cli` double-pin rule) reads these on every
@@ -1913,7 +1933,7 @@ covers the round-trip end-to-end against a real warren+burrow stack:
   cron and scheduled-seed paths attribute to the trigger owner's handle.
 
 **`.plot/` preservation across refresh (pl-d4d6, 2026-05-18).** Warren's
-host-side Plot appenders (`defaultPlotAppender` in `src/runs/spawn.ts`,
+host-side Plot appenders (`defaultPlotAppender` in `src/runs/spawn/plot-append.ts`,
 `defaultPlanRunPlotAppender` in `src/plan-runs/plot-appender.ts`,
 `autoTransitionPlotToDone` in `src/plan-runs/plot-transition.ts`) write
 to `<project_clone>/.plot/<id>.events.jsonl` and
@@ -2456,7 +2476,7 @@ POST /plan-runs { plot_id }
 [ coordinator ticks ]
    │
    ▼  for each child: dispatch.ts forwards planRun.plotId into spawnRun
-   ▼  composePlotEnv injects PLOT_ID + PLOT_ACTOR=agent:<name>:<run-id>
+   ▼  composeRunEnv injects PLOT_ID + PLOT_ACTOR=agent:<name>:<run-id>
    ▼  defaultPlotAppender emits per-child `run_dispatched` on the Plot (§11.O)
    │
    ▼  child runs → PR opens → reap → checkPullRequestMerged
@@ -2480,7 +2500,7 @@ per PlanRun**, immediately after `repos.planRuns.create` returns
 (handler edge, not coordinator tick), via the
 `defaultPlanRunPlotAppender` helper in `src/plan-runs/plot-appender.ts`
 — same rebuild-index + retry-once shape as `defaultPlotAppender`
-(`src/runs/spawn.ts`). Payload:
+(`src/runs/spawn/plot-append.ts`). Payload:
 
 ```json
 {

@@ -7,7 +7,12 @@
  * tests pass capture-buffers and synthetic env tables.
  */
 
-import type { SpawnFn as ProjectsSpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
+import {
+	type SpawnFn as ProjectsSpawnFn,
+	resolveSpawnEnv,
+	type SpawnOptions,
+	type SpawnResult,
+} from "../projects/clone.ts";
 
 export interface WriteSink {
 	write(chunk: string): void;
@@ -60,6 +65,9 @@ export const defaultSpawn: CliSpawn = async (cmd, opts) => {
 		cwd: opts.cwd,
 		stdout: "pipe",
 		stderr: "pipe",
+		// warren-035c/fa84: merge caller env OVER process.env (pinned identity
+		// wins); an `undefined` override unsets an inherited var. See resolveSpawnEnv.
+		...(opts.env !== undefined ? { env: resolveSpawnEnv(opts.env) } : {}),
 	});
 	const timer =
 		opts.timeoutMs !== undefined && opts.timeoutMs > 0

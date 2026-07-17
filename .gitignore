@@ -28,3 +28,11 @@ coverage/
 
 # Factory MCP config contains secrets (e.g. SUPABASE_ACCESS_TOKEN)
 .factory/mcp.json
+
+# live GKE deployment values (real project ids / identity) — template: overlays/gke
+deploy/k8s/overlays/gke-live/
+
+# local design-sync working dirs + MCP config (may contain secrets)
+.design-sync/
+.ds-sync/
+.mcp.json

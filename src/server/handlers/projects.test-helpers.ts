@@ -1,21 +1,19 @@
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { RunEventBroker } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
 
 /**
- * Build a single-worker `BurrowClientPool` from a stubbed `BurrowClient`
+ * Build a single-worker `BurrowClient` from a stubbed `BurrowClient`
  * so `POST /runs` and `POST /projects/:id/triggers/:triggerId/run` can
  * route through `spawnRun`'s placement seam (warren-39c3). Upserts the
  * synthetic `local` worker row so `placeForProject` has a healthy
  * candidate.
  */
-export async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClientPool> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register("local", client);
-	return pool;
+export async function poolFor(_repos: Repos, client: BurrowClient): Promise<BurrowClient> {
+	return client;
 }
 
 export const silentLogger = {
@@ -107,17 +105,17 @@ export async function depsFor(
 	extras?: { plotResolver?: import("../../plots/index.ts").PlotResolver },
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
-	const burrowClientPool = await poolFor(repos, burrowClient);
+	await poolFor(repos, burrowClient);
 	return {
 		repos,
-		burrowClientPool,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		broker,
 		bridges:
 			bridges ??
 			createBridgeRegistry({
 				repos,
 				broker,
-				burrowClientPool,
+				runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		canopyConfig: {

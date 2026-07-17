@@ -11,7 +11,6 @@
  */
 
 import { Command } from "commander";
-import { BurrowClientPool } from "../burrow-client/pool.ts";
 import { WarrenClient } from "../client/index.ts";
 import type { PlanRunState } from "../client/types.ts";
 import { openDatabase } from "../db/client.ts";
@@ -20,6 +19,7 @@ import { VERSION } from "../index.ts";
 import { loadProjectsConfigFromEnv } from "../projects/config.ts";
 import { seedBuiltinAgents } from "../registry/builtins/index.ts";
 import { requireCanopyRegistryConfigFromEnv } from "../registry/config.ts";
+import { resolveLocalRunBackend } from "../runtime/local/diagnostics/burrow.ts";
 import { runAddProject } from "./commands/add-project.ts";
 import { runConfigMigrate } from "./commands/config-migrate.ts";
 import { runMigrateToPostgres } from "./commands/db.ts";
@@ -116,20 +116,22 @@ export function buildProgram(context: CliContext): Command {
 					// a canopy library (warren-d3e9). Idempotent against existing
 					// rows.
 					await seedBuiltinAgents(repos.agents, undefined, context.now);
-					// warren-39c3 / warren-c0c9: build a single-worker pool from env
-					// so spawnRun can resolve placement and the bridge/reap/state-
-					// fetch paths can resolve per-burrow workers via `clientFor`.
-					// The pool registers a synthetic `local` row in `workers` and
-					// forwards the env-derived BurrowClient as its only entry,
-					// mirroring the zero-config bootServer path.
-					const burrowClientPool = await BurrowClientPool.fromEnv({
-						env: context.env,
-						repos,
-					});
+					// warren-11cc: resolve the run backend once (honoring WARREN_RUNTIME).
+					// The local backend lazily builds a single burrow client + preview
+					// seam; under k8s no burrow client is constructed. Direct burrow
+					// access is confined to `resolveLocalRunBackend`
+					// (src/runtime/local/diagnostics/burrow.ts).
+					const backend = resolveLocalRunBackend(context.env);
 					try {
 						const result = await runRun(
 							context,
-							{ repos, burrowClientPool },
+							{
+								repos,
+								runtimeProvider: backend.runtimeProvider,
+								...(backend.previewSidecars !== undefined
+									? { previewSidecars: backend.previewSidecars }
+									: {}),
+							},
 							{
 								agent,
 								project,
@@ -141,7 +143,7 @@ export function buildProgram(context: CliContext): Command {
 						);
 						return result.exitCode;
 					} finally {
-						await burrowClientPool.close().catch(() => undefined);
+						await backend.close();
 					}
 				});
 				process.exit(exitCode);

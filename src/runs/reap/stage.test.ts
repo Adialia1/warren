@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { gitRepoContextScrubEnv, warrenCommitIdentityEnv } from "../../bot-identity.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Ctx,
@@ -7,9 +8,9 @@ import {
 	fakeExec,
 	fakeFs,
 	makeBurrow,
-	makePool,
 	openDatabase,
 	RunEventBroker,
+	reapDeps,
 	setup,
 } from "./test-helpers.ts";
 
@@ -50,7 +51,6 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			burrowId: "bur_aaaaaaaaaaaa",
 			burrowRunId: "run_zzzzzzzzzzzz",
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 		await repos.runs.markRunning(run.id);
 		return {
 			db,
@@ -77,7 +77,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -108,6 +108,23 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			]);
 			const events = await plotCtx.repos.events.listByRun(plotCtx.runId);
 			expect(events.find((ev) => ev.kind === "reap.plot_committed")).toBeDefined();
+			// warren-035c: the commit spawn also pins the identity in env so an
+			// inherited GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c` config.
+			// warren-23dd: it also carries the repo-context GIT_* scrub (keys
+			// present-and-undefined) so a leaked GIT_DIR can't divert the commit.
+			const commitCall = e.calls.find((c) => c.cmd === "git" && c.args.includes("commit"));
+			expect(commitCall?.env).toEqual({
+				...gitRepoContextScrubEnv(),
+				...warrenCommitIdentityEnv(),
+			});
+			// warren-23dd: the non-commit git calls (add / diff --cached) in the
+			// same flow carry the scrub alone, mirroring clone-apply.ts.
+			const addCall = e.calls.find((c) => c.cmd === "git" && c.args[0] === "add");
+			expect(addCall?.env).toEqual(gitRepoContextScrubEnv());
+			const diffCall = e.calls.find(
+				(c) => c.cmd === "git" && c.args[0] === "diff" && c.args.includes("--cached"),
+			);
+			expect(diffCall?.env).toEqual(gitRepoContextScrubEnv());
 		} finally {
 			await plotCtx.db.close();
 		}
@@ -126,7 +143,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -161,7 +178,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -191,7 +208,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -218,7 +235,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -243,7 +260,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 			fs: f.fs,
 			exec: e.exec,
 		});
@@ -281,7 +298,6 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			burrowId: "bur_aaaaaaaaaaaa",
 			burrowRunId: "run_zzzzzzzzzzzz",
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 		await repos.runs.markRunning(run.id);
 		return {
 			db,
@@ -308,7 +324,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -343,6 +359,23 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			]);
 			const events = await seedsCtx.repos.events.listByRun(seedsCtx.runId);
 			expect(events.find((ev) => ev.kind === "reap.seeds_committed")).toBeDefined();
+			// warren-035c: the commit spawn also pins the identity in env so an
+			// inherited GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c` config.
+			// warren-23dd: it also carries the repo-context GIT_* scrub (keys
+			// present-and-undefined) so a leaked GIT_DIR can't divert the commit.
+			const commitCall = e.calls.find((c) => c.cmd === "git" && c.args.includes("commit"));
+			expect(commitCall?.env).toEqual({
+				...gitRepoContextScrubEnv(),
+				...warrenCommitIdentityEnv(),
+			});
+			// warren-23dd: the non-commit git calls (add / diff --cached) in the
+			// same flow carry the scrub alone, mirroring clone-apply.ts.
+			const addCall = e.calls.find((c) => c.cmd === "git" && c.args[0] === "add");
+			expect(addCall?.env).toEqual(gitRepoContextScrubEnv());
+			const diffCall = e.calls.find(
+				(c) => c.cmd === "git" && c.args[0] === "diff" && c.args.includes("--cached"),
+			);
+			expect(diffCall?.env).toEqual(gitRepoContextScrubEnv());
 		} finally {
 			await seedsCtx.db.close();
 		}
@@ -363,7 +396,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -396,7 +429,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -426,7 +459,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -454,7 +487,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -479,7 +512,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 			fs: f.fs,
 			exec: e.exec,
 		});

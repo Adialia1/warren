@@ -6,7 +6,12 @@
 
 import { type AnyWarrenDb, WARREN_DB_POOL_MAX_ENV } from "../../db/client.ts";
 import { parseDatabaseUrl } from "../../db/url.ts";
-import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
+import {
+	resolveSpawnEnv,
+	type SpawnFn,
+	type SpawnOptions,
+	type SpawnResult,
+} from "../../projects/clone.ts";
 import type { EnvLike } from "../config.ts";
 
 /**
@@ -24,6 +29,9 @@ export const defaultSpawn: SpawnFn = async (
 		cwd: opts.cwd,
 		stdout: "pipe",
 		stderr: "pipe",
+		// warren-035c/fa84: merge caller env OVER process.env (pinned identity
+		// wins); an `undefined` override unsets an inherited var. See resolveSpawnEnv.
+		...(opts.env !== undefined ? { env: resolveSpawnEnv(opts.env) } : {}),
 	});
 	const timer =
 		opts.timeoutMs !== undefined && opts.timeoutMs > 0

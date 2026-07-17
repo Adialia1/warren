@@ -132,7 +132,11 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 
 		const options: Parameters<typeof spawnRun>[0] = {
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			// warren-245d: thread the resolved runtime provider so POST /runs
+			// dispatches through the K8sProvider under WARREN_RUNTIME=k8s. Without
+			// this, spawnRun fell back to the burrow LocalProvider and every K8s
+			// dispatch 503'd `burrow_unreachable`. Mirrors conversations.ts.
+			runtimeProvider: deps.runtimeProvider,
 			agentName,
 			projectId,
 			prompt,

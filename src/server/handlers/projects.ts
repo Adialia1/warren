@@ -270,7 +270,9 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 
 		const result = await spawnRun({
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			// warren-245d: dispatch through the resolved runtime provider so the
+			// manual-run path honors WARREN_RUNTIME=k8s (else it 503s on burrow).
+			runtimeProvider: deps.runtimeProvider,
 			agentName: trigger.role,
 			projectId: project.id,
 			prompt,

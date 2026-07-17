@@ -5,7 +5,6 @@
  * inputs the orchestrator has already wired.
  */
 
-import type { BurrowClientPool } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
@@ -30,6 +29,10 @@ import type { loadPreviewPortRangeFromEnv } from "../../preview/port-allocator.t
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import type { loadAutoOpenPrConfigFromEnv, RunEventBroker } from "../../runs/index.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import type { PodAdmissionSource } from "../../runtime/k8s/admission.ts";
+import type { PodMetricsSource } from "../../runtime/k8s/pod-metrics.ts";
+import type { PodCacheReader } from "../../runtime/k8s/pod-watcher.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { IdempotencyStore } from "../idempotency.ts";
 import type { BridgeRegistry, Logger, ServerDeps } from "../types.ts";
@@ -45,7 +48,26 @@ type PreviewPortRange = ReturnType<typeof loadPreviewPortRangeFromEnv>;
 export interface BuildServerDepsInput {
 	readonly repos: Repos;
 	readonly db: AnyWarrenDb;
-	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * The runtime provider resolved ONCE at boot (`resolveRuntimeProvider`,
+	 * warren-c531) — the sole composition point. `bootServer` resolves it before
+	 * `bootBridges` (so the bridge registry, run-state poller, and watchdog all
+	 * share the same instance) and hands it here rather than deps re-resolving a
+	 * second instance. Under `local` it is the burrow-backed `LocalProvider`.
+	 */
+	readonly runtimeProvider: RuntimeProvider;
+	/**
+	 * Provider-neutral preview sidecar resolver (warren-e24d), gated on the
+	 * runtime's preview-port capability at boot. Threaded onto `ServerDeps` for
+	 * the preview-teardown handler's best-effort sidecar stop. Absent under a
+	 * backend without preview ports.
+	 */
+	readonly previewSidecars?: import("../../runtime/local/preview/sidecars.ts").LocalSidecarsResolver;
+	/**
+	 * Local-topology `/readyz` burrow probe (warren-f796). Present only under
+	 * `WARREN_RUNTIME=local` (from the `LocalBootBackend`); absent under k8s.
+	 */
+	readonly burrowProbe?: () => Promise<import("../../diagnostics/checks.ts").DiagnosticCheck>;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly canopyConfig: CanopyConfig;
@@ -62,6 +84,14 @@ export interface BuildServerDepsInput {
 	readonly previewAuth: PreviewAuth | undefined;
 	readonly sdBinary: string;
 	readonly metricsRegistry?: MetricsRegistry;
+	/**
+	 * The started K8s pod-watcher (src/server/main/runtime-wiring.ts), present
+	 * only under `WARREN_RUNTIME=k8s`. One instance satisfies three seams: the
+	 * `K8sProvider`'s status cache + admission source (threaded onto the provider
+	 * below) and the `/metrics` pod-gauge source (`ServerDeps.podMetrics`).
+	 * Absent under `local` — no pod plumbing is wired.
+	 */
+	readonly k8sPodWatcher?: PodCacheReader & PodAdmissionSource & PodMetricsSource;
 	readonly now?: () => Date;
 }
 
@@ -69,7 +99,8 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	const {
 		repos,
 		db,
-		burrowClientPool,
+		runtimeProvider,
+		burrowProbe,
 		broker,
 		bridges,
 		canopyConfig,
@@ -84,8 +115,10 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewEvictionConfig,
 		workspaceGcTtlMs,
 		previewAuth,
+		previewSidecars,
 		sdBinary,
 		metricsRegistry,
+		k8sPodWatcher,
 		now,
 	} = input;
 
@@ -106,10 +139,15 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	const previewHostForDeps =
 		previewLaunchConfig.host !== null ? previewLaunchConfig.host : undefined;
 
+	// Runtime-provider seam (warren-c531): the provider is resolved ONCE at boot
+	// (before `bootBridges`, so the bridge registry + poller + watchdog share it)
+	// and threaded in here, rather than deps re-resolving a second instance.
+
 	return {
 		repos,
 		db,
-		burrowClientPool,
+		runtimeProvider,
+		...(burrowProbe !== undefined ? { burrowProbe } : {}),
 		broker,
 		bridges,
 		...(canopyConfig !== null ? { canopyConfig } : {}),
@@ -127,6 +165,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewMode: previewLaunchConfig.mode,
 		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
 		...(previewAuth !== undefined ? { previewAuth } : {}),
+		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		plotAggregator,
 		plotCreator: defaultPlotCreator,
 		plotAttacher: defaultPlotAttacher,
@@ -146,6 +185,9 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		}),
 		idempotencyStore: new IdempotencyStore(now !== undefined ? { now: () => now().getTime() } : {}),
 		...(metricsRegistry !== undefined ? { metricsRegistry } : {}),
+		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
+		// (pl-829f step 25 / warren-7c30); absent under LocalProvider.
+		...(k8sPodWatcher !== undefined ? { podMetrics: k8sPodWatcher } : {}),
 		...(now !== undefined ? { now } : {}),
 	};
 }

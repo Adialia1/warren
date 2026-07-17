@@ -32,7 +32,12 @@
 
 import { ValidationError } from "../../core/errors.ts";
 import { isValidPlotIdFormat, PlotIdInvalidError, PlotIdNotFoundError } from "../../plots/index.ts";
-import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
+import {
+	resolveSpawnEnv,
+	type SpawnFn,
+	type SpawnOptions,
+	type SpawnResult,
+} from "../../projects/clone.ts";
 import type { Route, RouteContext, RouteHandler, ServerDeps } from "../types.ts";
 import {
 	getAgentHandler,
@@ -41,7 +46,6 @@ import {
 	refreshProjectAgentsHandler,
 } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
-import { getBurrowHandler, listBurrowsHandler } from "./burrows.ts";
 import {
 	createConversationHandler,
 	getConversationHandler,
@@ -91,17 +95,19 @@ import {
 import {
 	cancelRunHandler,
 	createRunHandler,
+	getRunFinalizeIntentHandler,
 	getRunHandler,
 	listBehaviorAnalyticsHandler,
 	listCostAnalyticsHandler,
 	listRunAnalyticsHandler,
 	listRunsHandler,
+	pollRunInboxHandler,
+	postRunFinalizeResultHandler,
 	previewLoginHandler,
 	previewTeardownHandler,
 	steerRunHandler,
 	streamRunEventsHandler,
 } from "./runs/index.ts";
-import { drainWorkerHandler, listWorkersHandler } from "./workers.ts";
 
 /**
  * Default `Bun.spawn` adaptor matching the SpawnFn shape the registry +
@@ -118,6 +124,9 @@ export const defaultSpawn: SpawnFn = async (
 		cwd: opts.cwd,
 		stdout: "pipe",
 		stderr: "pipe",
+		// warren-035c/fa84: merge caller env OVER process.env (pinned identity
+		// wins); an `undefined` override unsets an inherited var. See resolveSpawnEnv.
+		...(opts.env !== undefined ? { env: resolveSpawnEnv(opts.env) } : {}),
 	});
 	const timer =
 		opts.timeoutMs !== undefined && opts.timeoutMs > 0
@@ -288,12 +297,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	},
 	{ method: "DELETE", pattern: "/projects/:id", build: deleteProjectHandler },
 
-	{ method: "GET", pattern: "/burrows", build: listBurrowsHandler },
-	{ method: "GET", pattern: "/burrows/:id", build: getBurrowHandler },
-
-	{ method: "GET", pattern: "/workers", build: listWorkersHandler },
-	{ method: "POST", pattern: "/workers/:name/drain", build: drainWorkerHandler },
-
 	{ method: "GET", pattern: "/analytics/cost", build: listCostAnalyticsHandler },
 	{ method: "GET", pattern: "/analytics/runs", build: listRunAnalyticsHandler },
 	{ method: "GET", pattern: "/analytics/behavior", build: listBehaviorAnalyticsHandler },
@@ -301,6 +304,14 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/runs", build: createRunHandler },
 	{ method: "GET", pattern: "/runs/:id", build: getRunHandler },
 	{ method: "GET", pattern: "/runs/:id/events", build: streamRunEventsHandler },
+	// warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated
+	// like every /runs route; the pod carries WARREN_API_TOKEN.
+	{ method: "GET", pattern: "/runs/:id/inbox", build: pollRunInboxHandler },
+	// warren-0d35: the in-pod finalize callback for the K8s backend — the pod
+	// fetches the reap intent, runs the workspace-dependent half in place, and
+	// POSTs the FinalizeResult back. Bearer-gated; the pod carries WARREN_API_TOKEN.
+	{ method: "GET", pattern: "/runs/:id/finalize-intent", build: getRunFinalizeIntentHandler },
+	{ method: "POST", pattern: "/runs/:id/finalize-result", build: postRunFinalizeResultHandler },
 	{ method: "POST", pattern: "/runs/:id/steer", build: steerRunHandler },
 	{ method: "POST", pattern: "/runs/:id/cancel", build: cancelRunHandler },
 	{ method: "GET", pattern: "/runs/:id/preview/login", build: previewLoginHandler },
@@ -399,11 +410,9 @@ export const API_PREFIXES: readonly string[] = [
 	"/agents",
 	"/alerts",
 	"/analytics",
-	"/burrows",
 	"/conversations",
 	"/projects",
 	"/runs",
-	"/workers",
 	"/healthz",
 	"/readyz",
 	"/version",
@@ -443,11 +452,11 @@ export function isApiPath(pathname: string): boolean {
  */
 export function isAuthExempt(pathname: string): boolean {
 	if (pathname === "/healthz") return true;
-	// `/metrics` is the Prometheus scrape surface (warren observability
-	// Phase 1). Fly's managed Prometheus scrapes it over the private
-	// network without a bearer token; the body is aggregate counts +
-	// counters only (no secrets), mirroring `/healthz`.
-	if (pathname === "/metrics") return true;
+	// `/metrics` is deliberately NOT exempt (warren-682a): behind a public
+	// Ingress the scrape surface leaks operational shape (run counts, pod
+	// phases, queue depth). In-cluster Prometheus scrapes it with the
+	// bearer via the ServiceMonitor's `authorization` credentials
+	// (deploy/k8s/servicemonitor.yaml).
 	// `/version` is non-sensitive (just the package version string) and
 	// the UI fetches it before the user logs in to render in the sidebar
 	// header. Keeping it auth-exempt avoids a chicken-and-egg on the

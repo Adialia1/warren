@@ -11,12 +11,18 @@ export {
 	streamRunEventsHandler,
 } from "./events.ts";
 export {
+	getRunFinalizeIntentHandler,
+	postRunFinalizeResultHandler,
+} from "./finalize.ts";
+export {
 	getRunHandler,
 	listCostAnalyticsHandler,
 	listRunsHandler,
 } from "./lifecycle.ts";
 export {
 	cancelRunHandler,
+	cancelRunWiring,
+	pollRunInboxHandler,
 	steerRunHandler,
 } from "./pause-resume.ts";
 export {

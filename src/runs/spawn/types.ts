@@ -5,14 +5,13 @@
  * without dragging in the full `spawnRun` implementation graph.
  */
 
-import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { CloneKind, RunMode, RunRow } from "../../db/schema.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { refreshProject } from "../../projects/manage.ts";
 import type { AgentDefinition } from "../../registry/schema.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 
@@ -34,14 +33,15 @@ export interface SpawnLogger {
 export interface SpawnRunInput {
 	readonly repos: Repos;
 	/**
-	 * Multi-worker successor to the legacy `burrowClient` parameter
-	 * (warren-39c3 / pl-9ba1 step 4, parent warren-6747). `spawnRun`
-	 * resolves placement via `pool.placeFor({projectId})` so the chosen
-	 * worker name lands on `runs.worker_id` AND `burrows.worker_id`
-	 * before any burrow HTTP call. The same client services provision +
-	 * dispatch + rollback so a single run never crosses workers.
+	 * Runtime-provider seam (warren-c42c: burrow-client eviction, bucket 2).
+	 * `spawnRun` dispatches EXCLUSIVELY through `provider.create(spec)` — the
+	 * single call that collapses burrow's `burrowsUp` + `runs.create` (and, on
+	 * a partial failure, owns the sandbox-half teardown). Required: the spawn
+	 * path no longer knows about burrow, so callers resolve the boot-selected
+	 * provider (`resolveRuntimeProvider`, honoring `WARREN_RUNTIME`) and thread
+	 * it here. LocalProvider (default) wraps burrow; K8sProvider runs a pod.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly runtimeProvider: RuntimeProvider;
 	readonly agentName: string;
 	readonly projectId: string;
 	/**
@@ -232,6 +232,16 @@ export interface SpawnRunInput {
 	 * CLI paths that don't care — the flow degrades to a no-op logger.
 	 */
 	readonly logger?: SpawnLogger;
+	/**
+	 * Fired once with the freshly-minted warren run id, right after the run
+	 * row is created and before any runtime contact (warren-a0a2). Lets a
+	 * caller learn the row id even when `spawnRun` later throws (the row is
+	 * finalized `failed`/`never_started` on a pre-dispatch failure). The
+	 * scheduler's bounded-retry GC uses this to drop the transient
+	 * never_started rows a persistently-unreachable runtime would flood the
+	 * runs list with. Best-effort: the callback must not throw.
+	 */
+	readonly onRunRowCreated?: (runId: string) => void;
 }
 
 export interface AppendPlotRunDispatchedInput {
@@ -252,7 +262,15 @@ export interface SpawnPlotAppender {
 
 export interface SpawnRunResult {
 	readonly run: RunRow;
-	readonly burrow: Burrow;
-	readonly burrowRun: BurrowRun;
+	/**
+	 * Narrowed from burrow's full `Run`/`Burrow` rows (warren-1f56) to just the
+	 * ids the callers use (`bridges.start`, the HTTP response). The runtime seam
+	 * returns only an opaque `RunHandle`, so `burrow.workspacePath` — a host path
+	 * with no provider-neutral home — is a display-only carry-over (empty on the
+	 * real dispatch path) kept for wire/UI compatibility until the `/burrows`
+	 * surface is retired (plan §5.C).
+	 */
+	readonly burrow: { readonly id: string; readonly workspacePath: string };
+	readonly burrowRun: { readonly id: string };
 	readonly agent: AgentDefinition;
 }

@@ -1,37 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import type { SpawnRunInput, SpawnRunResult } from "../runs/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { TriggerSchedulerConfig } from "../triggers/index.ts";
 import { createWarrenConfigCache } from "../warren-config/index.ts";
 import { bootScheduler } from "./scheduler.ts";
 import type { BridgeRegistry } from "./types.ts";
-
-function stubFetch(): typeof fetch {
-	return (async () =>
-		new Response(JSON.stringify({ error: { code: "x", message: "stub" } }), {
-			status: 404,
-		})) as unknown as typeof fetch;
-}
-
-function makeBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stubFetch(),
-	});
-}
-
-async function makePool(repos: Repos): Promise<BurrowClientPool> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register("local", makeBurrowClient());
-	return pool;
-}
 
 interface BridgeCall {
 	readonly runId: string;
@@ -60,6 +39,11 @@ const SCHEDULER_CONFIG: TriggerSchedulerConfig = {
 };
 
 const NOW = new Date("2026-05-11T00:05:00.000Z");
+
+// Identity-only stub — the tests assert the SAME instance reaches spawnRun
+// (warren-c531 follow-up: a dropped provider silently falls back to the
+// burrow-backed LocalProvider, which cannot spawn under WARREN_RUNTIME=k8s).
+const RUNTIME_PROVIDER = { kind: "stub" } as unknown as RuntimeProvider;
 
 describe("bootScheduler", () => {
 	let db: WarrenDb;
@@ -138,7 +122,7 @@ describe("bootScheduler", () => {
 
 		const handle = bootScheduler({
 			repos,
-			burrowClientPool: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(bridgeCalls),
 			warrenConfigs,
 			projectsConfig: PROJECTS_CONFIG,
@@ -160,6 +144,7 @@ describe("bootScheduler", () => {
 		// spawnRun threaded the prod plumbing through (refresh hook + cache).
 		expect(spawnRunCalls[0]?.projectsConfig).toBe(PROJECTS_CONFIG);
 		expect(spawnRunCalls[0]?.warrenConfigs).toBe(warrenConfigs);
+		expect(spawnRunCalls[0]?.runtimeProvider).toBe(RUNTIME_PROVIDER);
 		expect(bridgeCalls).toHaveLength(1);
 		expect(bridgeCalls[0]?.burrowRunId).toBe("rb_a");
 	});
@@ -218,7 +203,7 @@ describe("bootScheduler", () => {
 
 		const handle = bootScheduler({
 			repos,
-			burrowClientPool: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(bridgeCalls),
 			warrenConfigs,
 			projectsConfig: PROJECTS_CONFIG,
@@ -266,7 +251,7 @@ describe("bootScheduler", () => {
 		const setIntervalCalls: { ms: number }[] = [];
 		const handle = bootScheduler({
 			repos,
-			burrowClientPool: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges([]),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({
@@ -297,7 +282,7 @@ describe("bootScheduler", () => {
 		const clearCalls: number[] = [];
 		const handle = bootScheduler({
 			repos,
-			burrowClientPool: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges([]),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({

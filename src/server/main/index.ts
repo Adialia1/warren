@@ -17,10 +17,7 @@
  * own the SIGTERM/SIGINT plumbing — this entry just exposes the stop
  * function so an integration test or the CLI can call it directly.
  *
- * `bootServer` is async because the burrow probe at startup (used to
- * fail-fast when the socket is unreachable) is async. The probe is
- * non-fatal — warren will still start if burrow is down so /readyz
- * can report it — but logged.
+ * `bootServer` is async because the startup burrow probe is async.
  *
  * Split into a `main/` subdirectory (warren-8d3d / pl-9088 step 10):
  * - `./utils.ts`         — env/process/db helpers (incl. `defaultSpawn`,
@@ -29,20 +26,9 @@
  * - `./preview-wiring.ts` — preview signed-cookie + proxy assembly
  */
 
-import { join } from "node:path";
-import { BurrowClientPool } from "../../burrow-client/index.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
-import {
-	autoTransitionPlotToDone,
-	bootPlanRunCoordinator,
-	createPlanRunSpawn,
-	createPrMergeChecker,
-	createResolveExecution,
-	defaultPlotStatusSetter,
-	loadPlanRunCoordinatorConfigFromEnv,
-} from "../../plan-runs/index.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
@@ -50,30 +36,23 @@ import {
 import { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
-import { parseGitHubUrl } from "../../projects/index.ts";
 import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
 import { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import {
-	composeRunBranch,
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
 	RunEventBroker,
-	resolveDispatcherHandle,
-	resolveRunBranchPrefix,
+	reapRun,
 } from "../../runs/index.ts";
-import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
 import { loadWorkspaceGcConfigFromEnv, startWorkspaceGcWorker } from "../../runs/reap/gc.ts";
-import { showSeed } from "../../seeds-cli/index.ts";
-import {
-	loadWarrenServerConfigFromFile,
-	requireSharedBurrowToken,
-} from "../../server-config/index.ts";
+import { resolveLocalBootBackend } from "../../runtime/local/boot-backend.ts";
+import { resolveRuntimeKind } from "../../runtime/registry.ts";
+import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { NO_AUTH, resolveAuth } from "../auth.ts";
 import { bootBridges } from "../bridges.ts";
 import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
-import { loadWorkerProbeConfigFromEnv, startWorkerProbe } from "../probe.ts";
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import type { AuthProvider, ServeHandle } from "../types.ts";
@@ -81,14 +60,14 @@ import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
 import {
 	bridgeLoggerFromPino,
-	planRunLoggerFromPino,
 	previewEvictionLoggerFromPino,
-	probeLoggerFromPino,
 	schedulerLoggerFromPino,
 	workspaceGcLoggerFromPino,
 } from "./logging.ts";
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
+import { bootPlanRunCoordinatorWiring } from "./plan-run-wiring.ts";
 import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
+import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
 
 // Re-export `resolvePgPoolMax` so the strict round-trip check stays
@@ -135,25 +114,13 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const repos = createRepos(db);
 
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
-	// `workers` is `[]` when `[workers]` is absent — the zero-config path
-	// still materializes a single synthetic `local` worker from
-	// WARREN_BURROW_* env vars (acceptance #1: identical behavior). When
-	// `[workers]` is declared, the file-driven `fromConfig` factory takes
-	// over and acceptance #8 requires the shared bearer token to be set.
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
-	const burrowClientPool =
-		fileConfig.workers.length > 0
-			? await BurrowClientPool.fromConfig({
-					repos,
-					workers: fileConfig.workers,
-					token: requireSharedBurrowToken(env),
-					...(opts.now !== undefined ? { now: opts.now } : {}),
-				})
-			: await BurrowClientPool.fromEnv({
-					env,
-					repos,
-					...(opts.now !== undefined ? { now: opts.now } : {}),
-				});
+	// warren-288f: multi-worker pooling is retired with the K8s migration — the
+	// self-host backend is a single local burrow built from WARREN_BURROW_* env
+	// vars. The `[workers]` TOML block, the /workers + /burrows surfaces, and the
+	// worker-probe loop are all gone; the workers table itself is dropped in
+	// step 24 (warren-3743). warren-f796: the burrow client no longer lives here —
+	// the `LocalBootBackend` builds + owns it under `local` (none under `k8s`).
 	const broker = new RunEventBroker();
 
 	logger.info(
@@ -165,10 +132,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		"warren server starting",
 	);
 	if (fileConfig.path !== null) {
-		logger.info(
-			{ path: fileConfig.path, workers: fileConfig.workers.length },
-			"loaded warren.toml",
-		);
+		logger.info({ path: fileConfig.path }, "loaded warren.toml");
 	}
 
 	// Seed built-in agents (warren-d3e9). Idempotent: existing rows
@@ -204,10 +168,53 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const schedulerConfig = loadTriggerSchedulerConfigFromEnv(env);
 	const seedsCli = { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn };
 
+	// K8s runtime background loops (pl-829f step 25 / warren-7c30). Under
+	// `WARREN_RUNTIME=k8s` this constructs + starts the pod-watcher informer and
+	// the pod-GC loop, feeding both the shared `metricsRegistry` as their counter
+	// sink. Returns `undefined` for the default `local` backend, so the self-host
+	// boot path constructs nothing new. The started watcher is the provider's
+	// status cache + admission source and the `/metrics` gauge source; the shared
+	// core-API factory keeps the provider on one client.
+	//
+	// warren-c531: booted HERE (before `bootBridges`) so the runtime provider can
+	// be resolved once and threaded into the bridge registry, the run-state
+	// poller, and the watchdog — all of which run before `buildServerDeps`. Until
+	// this move, the provider was resolved late (in `buildServerDeps`) and those
+	// background paths defaulted to the burrow-backed `LocalProvider`, so under
+	// `WARREN_RUNTIME=k8s` the bridge/poller spoke burrow directly and never
+	// streamed pod-log events / reconciled terminal pod status.
+	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger });
+	if (k8sRuntime !== undefined) {
+		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
+	}
+
+	// Resolve the runtime provider ONCE (warren-c531) — the SAME instance flows
+	// into the bridge registry, poller, watchdog, and `ServerDeps`. warren-f796:
+	// under `local` the `LocalBootBackend` owns the burrow client + the
+	// capability-gated preview/GC seams + burrow probe; under `k8s` there is no
+	// burrow, so we resolve the `K8sProvider` directly and those seams stay dark.
+	const localBackend =
+		resolveRuntimeKind(env) === "local" ? resolveLocalBootBackend(env) : undefined;
+	const runtimeProvider =
+		localBackend?.runtimeProvider ??
+		resolveBootRuntimeProvider({
+			env,
+			runInbox: () => repos.runInbox,
+			logger,
+			...(metricsRegistry !== undefined ? { admissionMetrics: metricsRegistry } : {}),
+			...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
+		});
+	const previewSidecars = localBackend?.previewSidecars;
+	const workspaceDestroyer = localBackend?.workspaceDestroyer;
+	const bindReap = (i: Parameters<typeof reapRun>[0]) =>
+		reapRun({ ...i, ...(previewSidecars !== undefined ? { previewSidecars } : {}) });
+
 	const bridgesBoot = await bootBridges({
 		repos,
 		broker,
-		burrowClientPool,
+		runtimeProvider,
+		// warren-e24d: reap seam pre-bound with the provider-derived preview seam.
+		reap: bindReap,
 		logger: bridgeLoggerFromPino(logger),
 		autoOpenPr,
 		warrenConfigs,
@@ -228,44 +235,21 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
-	// Best-effort startup probe (non-fatal; /readyz reports live state).
-	burrowClientPool.probe().then((results) => {
-		const failed = results.filter((r) => !r.ok);
-		if (failed.length > 0) {
-			logger.warn(
-				{
-					failed: failed.map((r) => ({
-						worker: r.workerName,
-						err: r.error?.message ?? "unknown",
-					})),
-				},
-				"burrow probe failed at boot — /readyz will reflect this",
-			);
-		}
-	});
-
-	const probeConfig = loadWorkerProbeConfigFromEnv(env);
-	const workerProbe = startWorkerProbe({
-		pool: burrowClientPool,
-		workers: repos.workers,
-		config: probeConfig,
-		logger: probeLoggerFromPino(logger),
-	});
-	if (probeConfig.disabled === true) {
-		logger.info({}, "worker probe disabled via WARREN_WORKER_PROBE_DISABLED");
-	} else {
-		logger.info(
-			{
-				intervalMs: probeConfig.intervalMs ?? 30_000,
-				timeoutMs: probeConfig.timeoutMs ?? 2_000,
-			},
-			"worker probe running",
-		);
+	// Startup burrow probe — local backend only; k8s has no socket (warren-c128).
+	if (localBackend !== undefined) {
+		localBackend.probeBurrow().then((result) => {
+			if (!result.ok) {
+				logger.warn(
+					{ err: result.message ?? "unknown" },
+					"burrow probe failed at boot — /readyz will reflect this",
+				);
+			}
+		});
 	}
 
 	const scheduler = bootScheduler({
 		repos,
-		burrowClientPool,
+		runtimeProvider,
 		bridges: bridgesBoot.registry,
 		warrenConfigs,
 		projectsConfig,
@@ -286,113 +270,21 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
-	// Plan-run coordinator (pl-a258 / warren-2623). Polls active plan_runs
-	// rows on a 10s tick by default; same single-flight + disabled-via-env
-	// shape as bootScheduler so operators reading logs see identical
-	// lifecycle semantics.
-	const planRunCoordinatorConfig = loadPlanRunCoordinatorConfigFromEnv(env);
-	const planRunCoordinator = bootPlanRunCoordinator({
+	// Plan-run coordinator (pl-a258 / warren-2623). See plan-run-wiring.ts.
+	const planRunCoordinator = bootPlanRunCoordinatorWiring({
+		env,
 		repos,
-		showSeed: async (projectId, seedId) => {
-			const project = await repos.projects.require(projectId);
-			return showSeed(seedsCli, project.localPath, seedId);
-		},
-		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
-		resolveExecution: createResolveExecution(repos), // pl-fb43 step 5: per-child execution repo
-		reopenPr:
-			autoOpenPr.enabled && autoOpenPr.token !== ""
-				? async (runId: string): Promise<string | null> => {
-						try {
-							const run = await repos.runs.get(runId);
-							if (run === null || run.projectId === null) return null;
-							const project = await repos.projects.get(run.projectId);
-							if (project === null) return null;
-							const warrenConfig = await warrenConfigs.get(run.projectId, project.localPath);
-							const prefix = resolveRunBranchPrefix({
-								projectDefault: warrenConfig.defaults?.runBranchPrefix,
-								envDefault: runBranchPrefixDefault,
-							});
-							const branch = composeRunBranch(prefix, runId);
-							const parsed = parseGitHubUrl(project.gitUrl);
-							const content = buildPrContent({
-								prompt: run.prompt,
-								runId: run.id,
-								agentName: run.agentName,
-								...(run.startedAt !== null ? { startedAt: run.startedAt } : {}),
-								...(run.endedAt !== null ? { endedAt: run.endedAt } : {}),
-								...(run.costUsd !== null ? { costUsd: run.costUsd } : {}),
-								...(run.tokensInput !== null ? { tokensInput: run.tokensInput } : {}),
-								...(run.tokensOutput !== null ? { tokensOutput: run.tokensOutput } : {}),
-								...(run.tokensCacheRead !== null ? { tokensCacheRead: run.tokensCacheRead } : {}),
-								...(autoOpenPr.warrenBaseUrl !== null
-									? { warrenBaseUrl: autoOpenPr.warrenBaseUrl }
-									: {}),
-							});
-							const result = await openPullRequest({
-								owner: parsed.owner,
-								repo: parsed.name,
-								head: branch,
-								base: project.defaultBranch,
-								title: content.title,
-								body: content.body,
-								token: autoOpenPr.token,
-							});
-							if (result.ok) return result.url;
-							logger.warn(
-								{ runId, reason: result.reason, message: result.message },
-								"plan_run.reopen_pr_failed",
-							);
-							return null;
-						} catch (err) {
-							logger.warn(
-								{ runId, reason: err instanceof Error ? err.message : String(err) },
-								"plan_run.reopen_pr_error",
-							);
-							return null;
-						}
-					}
-				: undefined,
-		spawn: createPlanRunSpawn({
-			repos,
-			burrowClientPool,
-			bridges: bridgesBoot.registry,
-			warrenConfigs,
-			projectsConfig,
-			projectSpawn: defaultSpawn,
-			seedsCli,
-			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
-			...(opts.now !== undefined ? { now: opts.now } : {}),
-		}),
-		// warren-b290 / pl-7937 step 5: auto-transition the bound Plot from
-		// `active` → `done` when every child of a Plot-bound PlanRun reaches a
-		// terminal state. Best-effort — see autoTransitionPlotToDone.
-		transitionPlot: async (planRun) => {
-			if (planRun.plotId === null) {
-				// Coordinator already guards on plotId, but narrow defensively
-				// so an unexpected null still produces a benign skip.
-				return { kind: "skipped", currentStatus: "unknown" };
-			}
-			const project = await repos.projects.require(planRun.projectId);
-			return autoTransitionPlotToDone({
-				setter: defaultPlotStatusSetter,
-				logger,
-				plotDir: join(project.localPath, ".plot"),
-				plotId: planRun.plotId,
-				handle: resolveDispatcherHandle(planRun.dispatcherHandle),
-				planRunId: planRun.id,
-			});
-		},
-		tickMs: planRunCoordinatorConfig.tickMs,
-		disabled: planRunCoordinatorConfig.disabled,
-		mergeTimeoutMs: planRunCoordinatorConfig.mergeTimeoutMs,
-		logger: planRunLoggerFromPino(logger),
+		runtimeProvider,
+		bridges: bridgesBoot.registry,
+		warrenConfigs,
+		projectsConfig,
+		autoOpenPr,
+		seedsCli,
+		projectSpawn: defaultSpawn,
+		logger,
+		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
-	if (planRunCoordinatorConfig.disabled) {
-		logger.info({}, "plan-run coordinator disabled via WARREN_PLAN_RUN_DISABLED");
-	} else {
-		logger.info({ tickMs: planRunCoordinatorConfig.tickMs }, "plan-run coordinator running");
-	}
 
 	// Background detectors (each gated by its own env flag): the pause
 	// detector (warren-2976), run heartbeat watchdog (warren-285d), send-off
@@ -406,7 +298,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			env,
 			adapter,
 			repos,
-			burrowClientPool,
+			reap: bindReap,
 			broker,
 			bridges: bridgesBoot.registry,
 			warrenConfigs,
@@ -414,52 +306,44 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			projectSpawn: defaultSpawn,
 			seedsCli,
 			autoOpenPr,
+			runtimeProvider,
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 			logger,
 			...(opts.now !== undefined ? { now: opts.now } : {}),
 		});
 
 	// Preview TTL + LRU eviction worker (R-19 / SPEC §11.L, warren-ea6b).
-	// Dialect-polymorphic since warren-adfb (createRunPreviewsRepo runs on
-	// either backend).
 	const previewEvictionWorker = startPreviewEvictionWorker({
 		db,
 		repos,
-		burrowClientPool,
 		warrenConfigs,
 		config: previewEvictionConfig,
 		logger: previewEvictionLoggerFromPino(logger),
+		...(previewSidecars !== undefined ? { resolveSidecar: previewSidecars } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 	if (previewEvictionConfig.disabled) {
 		logger.info({}, "preview eviction disabled via WARREN_PREVIEW_EVICTION_DISABLED");
 	} else {
-		logger.info(
-			{
-				tickMs: previewEvictionConfig.tickMs,
-				idleTtlMs: previewEvictionConfig.idleTtlMs,
-				maxLifetimeMs: previewEvictionConfig.maxLifetimeMs,
-				maxLive: previewEvictionConfig.maxLive,
-			},
-			"preview eviction worker running",
-		);
+		logger.info({ ...previewEvictionConfig }, "preview eviction worker running");
 	}
 
-	// Fallback GC for stranded burrow workspaces (warren-0a9a). Per-reap
-	// destroy (warren-0d89) covers the happy path; this periodic sweep
-	// reclaims burrows stranded by a mid-reap crash or an out-of-band
-	// force-kill that never got a reap.
+	// Fallback GC for stranded workspaces (warren-0a9a): reclaims workspaces
+	// stranded by a mid-reap crash / out-of-band force-kill. warren-e24d: runs
+	// only when the runtime advertises `workspaceGc` (dark under K8s).
+	const resolvedWorkspaceGcConfig =
+		workspaceDestroyer !== undefined ? workspaceGcConfig : { ...workspaceGcConfig, disabled: true };
 	const workspaceGcWorker = startWorkspaceGcWorker({
 		repos,
-		burrowClientPool,
-		config: workspaceGcConfig,
+		destroyWorkspace: workspaceDestroyer ?? (async () => ({ status: "already-gone" as const })),
+		config: resolvedWorkspaceGcConfig,
 		logger: workspaceGcLoggerFromPino(logger),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 	logger.info(
-		{ ...workspaceGcConfig },
-		workspaceGcConfig.disabled
-			? "workspace GC disabled via WARREN_WORKSPACE_GC_DISABLED"
+		{ ...resolvedWorkspaceGcConfig },
+		resolvedWorkspaceGcConfig.disabled
+			? "workspace GC disabled (WARREN_WORKSPACE_GC_DISABLED or runtime lacks workspaceGc capability)"
 			: "workspace GC worker running",
 	);
 
@@ -473,7 +357,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const deps = buildServerDeps({
 		repos,
 		db,
-		burrowClientPool,
+		// warren-c531: the provider resolved once above; deps re-uses it.
+		runtimeProvider,
+		// warren-f796: local-topology `/readyz` burrow probe (absent under k8s).
+		...(localBackend !== undefined ? { burrowProbe: localBackend.probeBurrow } : {}),
 		broker,
 		bridges: bridgesBoot.registry,
 		canopyConfig,
@@ -488,8 +375,12 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		previewEvictionConfig,
 		workspaceGcTtlMs: workspaceGcConfig.ttlMs,
 		previewAuth,
+		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		sdBinary: schedulerConfig.sdBinary,
 		metricsRegistry,
+		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
+		// (warren-7c30); absent under LocalProvider.
+		...(k8sRuntime !== undefined ? { k8sPodWatcher: k8sRuntime.podWatcher } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 
@@ -523,9 +414,11 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await previewEvictionWorker.stop();
 			await workspaceGcWorker.stop();
 			await opsStatsWorker.stop();
-			await workerProbe.stop();
+			// K8s runtime loops (no-op / undefined under the local backend).
+			await k8sRuntime?.stop();
 			await bridgesBoot.registry.stopAll();
-			await burrowClientPool.close();
+			// warren-f796: close the local backend's burrow client (undefined under k8s).
+			await localBackend?.close();
 			await closeDatabase(db);
 		},
 	};

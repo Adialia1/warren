@@ -6,10 +6,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
+import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { RunEventBroker } from "../runs/index.ts";
+import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 import { startServer } from "./server.ts";
@@ -42,18 +43,15 @@ async function depsFor(repos: Repos): Promise<ServerDeps> {
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
 		fetch: stubFetch(),
 	});
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const burrowClientPool = new BurrowClientPool({ repos });
-	burrowClientPool.register("local", burrowClient);
 	const broker = new RunEventBroker();
 	return {
 		repos,
-		burrowClientPool,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		broker,
 		bridges: createBridgeRegistry({
 			repos,
 			broker,
-			burrowClientPool,
+			runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

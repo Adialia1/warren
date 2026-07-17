@@ -1,12 +1,13 @@
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type {
 	LaunchPreviewInput,
 	LaunchPreviewResult,
 	PreviewLaunchConfig,
+	PreviewSidecarResolver,
 } from "../../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../../preview/port-allocator.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
 import type { RunEventBroker } from "../events.ts";
@@ -30,27 +31,45 @@ export interface ReapFs {
 
 export interface ReapExec {
 	/** Run a command; resolves on exit-0, rejects with an `Error` whose
-	 * `message` carries stderr otherwise. Mirrors `child_process.execFile`. */
+	 * `message` carries stderr otherwise. Mirrors `child_process.execFile`.
+	 *
+	 * `env` (warren-035c) is merged OVER the inherited process environment at
+	 * the spawn — the commit sites pass `warrenCommitIdentityEnv()` so an
+	 * inherited `GIT_AUTHOR_*` / `GIT_COMMITTER_*` can't out-rank the pinned
+	 * bot identity. A key mapped to `undefined` is REMOVED from the child env
+	 * (warren-fa84) — how clone-apply scrubs repo-context `GIT_*` a parent
+	 * hook leaked. Omitted ⇒ plain inheritance, behavior unchanged. */
 	readonly run: (
 		cmd: string,
 		args: readonly string[],
-		opts: { cwd: string; timeoutMs?: number },
+		opts: { cwd: string; timeoutMs?: number; env?: Record<string, string | undefined> },
 	) => Promise<{ stdout: string; stderr: string }>;
 }
 
 export interface ReapRunInput {
 	readonly runId: string;
-	/** The burrow-observed terminal state to transition the warren row into. */
+	/** The provider-observed terminal state to transition the warren row into. */
 	readonly outcome: RunTerminalState;
 	readonly repos: Repos;
 	/**
-	 * Multi-worker burrow pool (warren-c0c9 / pl-9ba1 step 5). reap resolves
-	 * the owning worker via `pool.clientFor({burrowId: run.burrowId})` for
-	 * the workspace lookup + seeds-close mirror http calls. Propagates
-	 * `StickyWorkerUnreachableError` (503 via src/server/errors.ts) when the
-	 * pinned worker is `unreachable`.
+	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
+	 * workspace-dependent half of reap runs as `provider.finalize(handle, intent)`
+	 * followed by `provider.terminate(handle)`; workspace resolution runs through
+	 * `provider.workspaceInfo`. REQUIRED (warren-e24d): reap no longer builds a
+	 * fallback burrow-backed provider, so it holds no burrow client of its own —
+	 * the boot wiring (and tests) construct the provider and thread it here.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly runtimeProvider: RuntimeProvider;
+	/**
+	 * Preview sidecar seam (warren-e24d), used ONLY by the preview launch
+	 * sub-step — a LocalProvider-only capability. Built at boot from the runtime
+	 * provider (`createLocalSidecarsResolver`) and threaded here gated on
+	 * `runtimeProvider.capabilities.previewPorts`. Omitted (or absent capability)
+	 * ⇒ the preview launch is skipped exactly as for a backend without preview
+	 * ports; the pipeline surfaces `reap.preview_skipped_unsupported` for an
+	 * opted-in project.
+	 */
+	readonly previewSidecars?: PreviewSidecarResolver;
 	/** If supplied, every reap-emitted event is published here too. */
 	readonly broker?: RunEventBroker;
 	readonly fs?: ReapFs;
@@ -117,7 +136,7 @@ export interface ReapRunInput {
 	/**
 	 * Override the preview-launch mechanics (tests). Defaults to
 	 * `launchPreview`. Receives the resolved input shape, including the
-	 * port allocator and the worker-local burrow client, so tests can
+	 * port allocator and the resolved sidecars facade, so tests can
 	 * assert call arguments without touching real sidecars.
 	 */
 	readonly launchPreview?: (input: LaunchPreviewInput) => Promise<LaunchPreviewResult>;
@@ -150,7 +169,9 @@ export type ReapStep =
 	| "seeds_close"
 	| "plans_mirror"
 	| "seed_id_close"
+	| "clone_apply"
 	| "seeds_commit"
+	| "seed_reset"
 	| "plot_merge"
 	| "plot_commit"
 	| "auto_plan_run"

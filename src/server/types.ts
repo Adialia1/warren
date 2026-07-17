@@ -9,7 +9,6 @@
  * `db/repos/` — this file just declares the seams the wiring rides on.
  */
 
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import type { AnyWarrenDb } from "../db/client.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
@@ -22,6 +21,7 @@ import type { refreshProject } from "../projects/manage.ts";
 import type { CanopyRegistryConfig } from "../registry/config.ts";
 import type { RunEventBroker } from "../runs/events.ts";
 import type { AutoOpenPrConfig } from "../runs/pr.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { PreviewMode, WarrenConfigCache } from "../warren-config/index.ts";
 import type { IdempotencyStore } from "./idempotency.ts";
@@ -121,27 +121,30 @@ export interface Logger {
 export interface ServerDeps {
 	readonly repos: Repos;
 	/**
-	 * Live db handle — used by the `/readyz` `db_reachable` probe
-	 * (R-13 pl-f17e step 5, warren-e2ea) so the diagnostic envelope
-	 * reports the active dialect. Tests can omit; the probe degrades
-	 * to `ok: true` with a "no db wired" message when absent.
+	 * Live db handle — used by the `/readyz` `db_reachable` probe (R-13 pl-f17e
+	 * step 5, warren-e2ea) so the diagnostic envelope reports the active dialect.
+	 * Tests can omit; the probe degrades to `ok: true`/"no db wired" when absent.
 	 */
 	readonly db?: AnyWarrenDb;
-	/**
-	 * Multi-worker burrow client pool (warren-39c3 / warren-c0c9 / pl-9ba1).
-	 * Every burrow-targeting handler routes through this: `placeFor` for new
-	 * burrows, `clientFor` for per-resource reads (cancel / steer / reap /
-	 * bridges / GET /burrows/:id), and `probe()` for /readyz.
-	 */
-	readonly burrowClientPool: BurrowClientPool;
+	/** Boot-resolved runtime provider (`resolveRuntimeProvider`, honoring
+	 * `WARREN_RUNTIME`). REQUIRED (warren-f796) — handlers route through it, no
+	 * burrow-client fallback (`local` ⇒ LocalProvider, `k8s` ⇒ K8sProvider). */
+	readonly runtimeProvider: RuntimeProvider;
+	/** Local-topology `/readyz` burrow probe (warren-f796), boot-wired by the `LocalBootBackend`; absent under `k8s`. */
+	readonly burrowProbe?: () => Promise<import("../diagnostics/checks.ts").DiagnosticCheck>;
+	/** Preview sidecar resolver (warren-e24d), gated on `previewPorts`. The local
+	 * backend's combined facade resolver satisfies both preview consumer seams. */
+	readonly previewSidecars?: import("../runtime/local/preview/sidecars.ts").LocalSidecarsResolver;
+	/** K8s in-pod finalize correlation registry (warren-0d35); defaults to the
+	 * shared singleton, so prod needs no wiring — tests inject a private instance. */
+	readonly finalizeCoordinator?: import("../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	/**
 	 * Canopy library config — undefined when `CANOPY_REPO_URL` is unset
-	 * (warren-d3e9). `POST /agents/refresh` and the canopy clone /
-	 * canopy clean readyz probes are gated on this being defined.
-	 * Built-in agents in `src/registry/builtins/` cover the common
-	 * "no library configured" case.
+	 * (warren-d3e9). `POST /agents/refresh` and the canopy clone / canopy clean
+	 * readyz probes are gated on this being defined. Built-in agents in
+	 * `src/registry/builtins/` cover the common "no library configured" case.
 	 */
 	readonly canopyConfig?: CanopyRegistryConfig;
 	readonly projectsConfig: ProjectsConfig;
@@ -196,26 +199,23 @@ export interface ServerDeps {
 	/**
 	 * Live-preview cap (R-19 / SPEC §11.L, warren-ea6b). Resolved from
 	 * `WARREN_PREVIEW_MAX_LIVE` at boot so `/readyz`'s `preview_max_live`
-	 * saturation probe matches the eviction worker's LRU cap. Tests may
-	 * omit; the probe falls back to `DEFAULT_MAX_LIVE` so the codepath
-	 * still exercises.
+	 * saturation probe matches the eviction worker's LRU cap. Tests may omit; the
+	 * probe falls back to `DEFAULT_MAX_LIVE` so the codepath still exercises.
 	 */
 	readonly previewMaxLive?: number;
 	/**
 	 * Fallback workspace-GC TTL in ms (warren-0a9a). Resolved from
-	 * `WARREN_WORKSPACE_GC_TTL` at boot so `/readyz`'s
-	 * `stale_burrow_workspaces` probe ages burrows on the same threshold
-	 * the GC sweeper uses. Tests may omit; the probe is skipped when
-	 * absent.
+	 * `WARREN_WORKSPACE_GC_TTL` at boot so `/readyz`'s `stale_burrow_workspaces`
+	 * probe ages burrows on the GC sweeper's threshold. Tests may omit; the probe
+	 * is skipped when absent.
 	 */
 	readonly workspaceGcTtlMs?: number;
 	/**
 	 * Operator's preview host suffix (R-19 / SPEC §11.L, warren-8a10).
 	 * Resolved at boot from `WARREN_PREVIEW_HOST`. In subdomain mode the
-	 * Host-match preview proxy preamble requires this; in path mode it
-	 * stays optional (previews ride on the warren host itself). Undefined
-	 * + subdomain mode → preview surface is off, the login handler returns
-	 * 400, and the proxy never inspects a request.
+	 * Host-match preview proxy preamble requires this; in path mode it stays
+	 * optional (previews ride on the warren host itself). Undefined + subdomain
+	 * mode → preview surface off, the login handler 400s, the proxy never inspects.
 	 */
 	readonly previewHost?: string;
 	/**
@@ -427,13 +427,13 @@ export interface ServerDeps {
 	 */
 	readonly idempotencyStore?: IdempotencyStore;
 	/**
-	 * In-process counter registry backing `GET /metrics` (warren
-	 * observability Phase 1). `bootServer` wires one and also threads it
-	 * into the root logger's sink hook so warn/error log rates are counted.
-	 * Undefined → the metrics endpoint omits counters (tests, or a
-	 * deployment that didn't wire it).
+	 * Counter registry for `GET /metrics` (observability Phase 1); undefined omits the counters.
 	 */
 	readonly metricsRegistry?: import("../observability/metrics-registry.ts").MetricsRegistry;
+	/**
+	 * K8s pod-phase gauge source for `GET /metrics` (pl-829f step 16); set under WARREN_RUNTIME=k8s.
+	 */
+	readonly podMetrics?: import("../runtime/k8s/pod-metrics.ts").PodMetricsSource;
 }
 
 /**
@@ -446,7 +446,7 @@ export interface BridgeRegistry {
 	/**
 	 * Start a bridge for the given run; idempotent against a running bridge.
 	 * `burrowId` is required so the bridge can resolve the owning worker via
-	 * `BurrowClientPool.clientFor` (warren-c0c9). `mode` (warren-df71) makes a
+	 * `BurrowClient.clientFor` (warren-c0c9). `mode` (warren-df71) makes a
 	 * `'conversation'` run keep-alive across pi `agent_end` turn boundaries;
 	 * omit / `'batch'` retains the prior one-shot terminal behaviour.
 	 */

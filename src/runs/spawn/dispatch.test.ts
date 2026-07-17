@@ -1,15 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-	BurrowClient,
-	BurrowClientPool,
-	BurrowUnreachableError,
-} from "../../burrow-client/index.ts";
+import { BurrowClient, BurrowUnreachableError } from "../../burrow-client/index.ts";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { isId } from "../../core/ids.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { composeDispatchPrompt, spawnRun } from "./index.ts";
-import { makeAgentJson, makeBurrowClient, makePool, setupRepos, stub } from "./test-helpers.ts";
+import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos, stub } from "./test-helpers.ts";
 
 describe("spawnRun: validation", () => {
 	let db: WarrenDb;
@@ -27,7 +23,7 @@ describe("spawnRun: validation", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "   ",
@@ -42,7 +38,7 @@ describe("spawnRun: validation", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "no-such-agent",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "fix it",
@@ -56,7 +52,7 @@ describe("spawnRun: validation", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_doesnotexist",
 				prompt: "fix it",
@@ -65,7 +61,7 @@ describe("spawnRun: validation", () => {
 	});
 });
 
-describe("spawnRun: end-to-end + placement", () => {
+describe("spawnRun: end-to-end", () => {
 	let db: WarrenDb;
 	let repos: Repos;
 
@@ -80,7 +76,7 @@ describe("spawnRun: end-to-end + placement", () => {
 		const { client, calls } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix the flaky test",
@@ -124,41 +120,25 @@ describe("spawnRun: end-to-end + placement", () => {
 		const seededPaths = (upBody.seed?.files ?? []).map((f) => f.path);
 		expect(seededPaths).toContain(".canopy/agent.json");
 
-		expect(reread.workerId).toBe("local");
-		const burrowRow = await repos.burrows.require("bur_aaaaaaaaaaaa");
-		expect(burrowRow.workerId).toBe("local");
+		// warren-3743: worker_id is nullified for new runs (the workers/burrows
+		// placement tables were dropped); the burrow correlation ids are still
+		// written for LocalProvider resume.
+		expect(reread.workerId).toBeNull();
 	});
 
-	test("placement: writes worker_id under a non-default worker name (warren-39c3)", async () => {
+	test("leaves worker_id NULL and writes the burrow ids for new runs (warren-3743)", async () => {
 		const { client } = makeBurrowClient();
-		const pool = await makePool(repos, client, "alpha");
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: pool,
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
 		});
-		expect((await repos.runs.require(result.run.id)).workerId).toBe("alpha");
-		expect((await repos.burrows.require(result.burrow.id)).workerId).toBe("alpha");
-	});
-
-	test("placement: raises NoEligibleWorkerError when no healthy worker exists (warren-39c3)", async () => {
-		const { client } = makeBurrowClient();
-		// Pool with a registered client but no `healthy` worker row — drives
-		// placeForProject into NoEligibleWorkerError before any burrow call.
-		const pool = new BurrowClientPool({ repos });
-		pool.register("local", client);
-		await expect(
-			spawnRun({
-				repos,
-				burrowClientPool: pool,
-				agentName: "refactor-bot",
-				projectId: "prj_xxxxxxxxxxxx",
-				prompt: "p",
-			}),
-		).rejects.toThrow(/no_eligible_worker|no healthy/);
-		expect(await repos.runs.listAll()).toHaveLength(0);
+		const stored = await repos.runs.require(result.run.id);
+		expect(stored.workerId).toBeNull();
+		expect(stored.burrowId).toBe(result.burrow.id);
+		expect(stored.burrowRunId).toBe(result.burrowRun.id);
 	});
 });
 
@@ -187,7 +167,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -232,7 +212,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "planner",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "help me think",
@@ -259,7 +239,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -279,7 +259,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "pi",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -304,7 +284,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "pi",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -350,7 +330,7 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
@@ -375,7 +355,7 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_withplot",
 			plotId: "plt_001",
@@ -413,7 +393,7 @@ describe("spawnRun: rollback", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",
@@ -438,7 +418,7 @@ describe("spawnRun: rollback", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",
@@ -448,7 +428,7 @@ describe("spawnRun: rollback", () => {
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.state).toBe("failed");
-		expect(rows[0]?.burrowId).toBe("bur_aaaaaaaaaaaa");
+		expect(rows[0]?.burrowId).toBeNull(); // warren-1f56: provider owns burrow-half rollback
 		expect(rows[0]?.burrowRunId).toBeNull();
 		const methods = calls.map((c) => `${c.method} ${c.path}`);
 		expect(methods).toContain("DELETE /burrows/bur_aaaaaaaaaaaa");
@@ -467,7 +447,7 @@ describe("spawnRun: rollback", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",

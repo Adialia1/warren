@@ -1,6 +1,6 @@
 {
 	"name": "@os-eco/warren-cli",
-	"version": "0.9.10",
+	"version": "0.10.0",
 	"description": "Self-hostable control plane for ephemeral cloud agents — spawn sandboxed agents at your GitHub repos, watch them work live, steer them, get a branch back",
 	"type": "module",
 	"bin": {
@@ -32,6 +32,9 @@
 	},
 	"scripts": {
 		"test": "bun test",
+		"workspace:init": "bun run src/runtime/k8s/workspace-init.ts",
+		"agent:run": "bun run src/runtime/k8s/agent-entrypoint.ts",
+		"finalize:run": "bun run src/runtime/k8s/finalize-entrypoint.ts",
 		"test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
 		"check:coverage": "bun run scripts/check-coverage.ts",
 		"check:coverage:ci": "bun run scripts/check-coverage.ts --junit",
@@ -39,8 +42,9 @@
 		"test:pg": "bun run scripts/test-pg.ts",
 		"report:test-timing": "bun run scripts/report-test-timing.ts",
 		"report:quality-metrics": "bun run scripts/report-quality-metrics.ts",
-		"lint": "biome check --error-on-warnings .",
-		"lint:fix": "biome check --write --error-on-warnings .",
+		"lint": "biome check --error-on-warnings . && bun run scripts/check-burrow-boundary.ts",
+		"lint:fix": "biome check --write --error-on-warnings . && bun run scripts/check-burrow-boundary.ts",
+		"check:burrow-boundary": "bun run scripts/check-burrow-boundary.ts",
 		"typecheck": "tsc --noEmit",
 		"check:agents": "bun run scripts/validate-agents-md.ts",
 		"check:size": "bun run scripts/check-file-sizes.ts",
@@ -77,6 +81,7 @@
 		"yaml": "^2.8.2"
 	},
 	"dependencies": {
+		"@kubernetes/client-node": "^1.4.0",
 		"@os-eco/burrow-cli": "^0.3.15",
 		"@os-eco/plot-cli": "^0.4.0",
 		"@sentry/bun": "^10.59.0",

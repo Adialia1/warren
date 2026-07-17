@@ -40,6 +40,8 @@ import {
 	CLONE_KINDS,
 	CONVERSATION_STATES,
 	EVENT_STREAMS,
+	INBOX_PRIORITIES,
+	INBOX_STATES,
 	INDEX_NAMES,
 	MESSAGE_ROLES,
 	PLAN_RUN_CHILD_STATES,
@@ -49,7 +51,6 @@ import {
 	RUN_MODES,
 	RUN_STATES,
 	TABLE_NAMES,
-	WORKER_STATES,
 } from "./columns.ts";
 
 export const agents = pgTable(
@@ -181,23 +182,6 @@ export const triggers = pgTable(
 	(t) => [index(INDEX_NAMES.triggersProject).on(t.projectId)],
 );
 
-export const workers = pgTable(TABLE_NAMES.workers, {
-	name: text("name").primaryKey(),
-	url: text("url").notNull(),
-	state: text("state", { enum: WORKER_STATES }).notNull().default("healthy"),
-	addedAt: text("added_at").notNull(),
-});
-
-export const burrows = pgTable(
-	TABLE_NAMES.burrows,
-	{
-		id: text("id").primaryKey(),
-		workerId: text("worker_id").notNull(),
-		addedAt: text("added_at").notNull(),
-	},
-	(t) => [index(INDEX_NAMES.burrowsWorker).on(t.workerId)],
-);
-
 /**
  * Plan-run coordinator state (pl-a258 step 2 / warren-4d7c) — mirror of
  * sqlite. See sqlite.ts for shape + state-machine intent.
@@ -277,10 +261,6 @@ export type EventRow = typeof events.$inferSelect;
 export type EventInsert = typeof events.$inferInsert;
 export type TriggerRow = typeof triggers.$inferSelect;
 export type TriggerInsert = typeof triggers.$inferInsert;
-export type WorkerRow = typeof workers.$inferSelect;
-export type WorkerInsert = typeof workers.$inferInsert;
-export type BurrowRow = typeof burrows.$inferSelect;
-export type BurrowInsert = typeof burrows.$inferInsert;
 /**
  * Plots projection (warren-9022) — mirror of sqlite.
  * `state_json` is `jsonb` here (vs sqlite's `text mode:"json"`); the drift
@@ -355,6 +335,28 @@ export const messages = pgTable(
 	(t) => [index(INDEX_NAMES.messagesConversationSeq).on(t.conversationId, t.seq)],
 );
 
+/**
+ * Run inbox (warren-3d0b) — mirror of sqlite. See sqlite.ts for the pod-per-run
+ * steering-channel intent + delivery semantics.
+ */
+export const runInbox = pgTable(
+	TABLE_NAMES.runInbox,
+	{
+		id: text("id").primaryKey(),
+		runId: text("run_id")
+			.notNull()
+			.references(() => runs.id, { onDelete: "cascade" }),
+		seq: integer("seq").notNull(),
+		body: text("body").notNull(),
+		priority: text("priority", { enum: INBOX_PRIORITIES }).notNull().default("normal"),
+		fromActor: text("from_actor").notNull().default("operator"),
+		state: text("state", { enum: INBOX_STATES }).notNull().default("unread"),
+		createdAt: text("created_at").notNull(),
+		deliveredAt: text("delivered_at"),
+	},
+	(t) => [index(INDEX_NAMES.runInboxRunState).on(t.runId, t.state)],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
@@ -364,4 +366,6 @@ export type PlotInsert = typeof plots.$inferInsert;
 export type ConversationRow = typeof conversations.$inferSelect;
 export type ConversationInsert = typeof conversations.$inferInsert;
 export type MessageRow = typeof messages.$inferSelect;
+export type RunInboxRow = typeof runInbox.$inferSelect;
+export type RunInboxInsert = typeof runInbox.$inferInsert;
 export type MessageInsert = typeof messages.$inferInsert;

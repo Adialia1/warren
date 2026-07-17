@@ -1,11 +1,14 @@
 /**
  * SQLite physical schema for warren's durable state (SPEC §9).
  *
- * Twelve tables: agents (canopy registry cache), projects (cloned repos), runs
+ * Ten tables: agents (canopy registry cache), projects (cloned repos), runs
  * (warren-side run rows that mirror burrow's lifecycle), events (write-through
  * cache of burrow's stream — see SPEC §9 "event durability rationale"), triggers
- * (R-06 scheduler bookkeeping), workers + burrows (multi-worker placement
- * registry), planRuns + planRunChildren, plots, and conversations + messages.
+ * (R-06 scheduler bookkeeping), planRuns + planRunChildren, plots, and
+ * conversations + messages. The workers + burrows multi-worker placement
+ * tables were dropped in warren-3743 (0028) once LocalProvider absorbed the
+ * single-burrow runtime; `runs.worker_id` is retained (nullable, unwritten)
+ * for historical rows only.
  *
  * Timestamps are ISO8601 TEXT, mirroring the burrow event envelope `ts` field
  * so we don't translate at the stream boundary. JSON columns use drizzle's
@@ -32,6 +35,8 @@ import {
 	CLONE_KINDS,
 	CONVERSATION_STATES,
 	EVENT_STREAMS,
+	INBOX_PRIORITIES,
+	INBOX_STATES,
 	INDEX_NAMES,
 	MESSAGE_ROLES,
 	PLAN_RUN_CHILD_STATES,
@@ -41,7 +46,6 @@ import {
 	RUN_MODES,
 	RUN_STATES,
 	TABLE_NAMES,
-	WORKER_STATES,
 } from "./columns.ts";
 
 /**
@@ -128,16 +132,21 @@ export const runs = sqliteTable(
 		// with the disk-first ordering in deleteProject left the project
 		// row orphaned from its on-disk clone.
 		projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+		// Provider-side sandbox id (burrow id under LocalProvider). Load-bearing:
+		// the bridge/reconnect path (`bootBridges`, `server/bridge-reconnect.ts`)
+		// reads it after a host restart to re-attach the run's live event stream.
+		// Nullable — a run that fails before dispatch never gets one.
 		burrowId: text("burrow_id"),
+		// Provider-side run/dispatch id (burrow run id under LocalProvider).
+		// Load-bearing alongside `burrow_id` for the same resume path (it scopes
+		// cancel / steer / status against the sandbox). Nullable, same reason.
 		burrowRunId: text("burrow_run_id"),
-		// Denormalized worker placement (warren-135b / pl-9ba1 step 2).
-		// Copy of `burrows.worker_id` written at run-create time so streaming /
-		// cancel / steer paths can route to the owning worker without a join.
-		// Plain text (no FK to `workers.name`) because the zero-config single-
-		// worker deploy uses a synthetic local worker that has no row in the
-		// `workers` table. Nullable for back-compat with rows written before
-		// this column landed; new rows always set it once `BurrowClientPool`
-		// (step 3) and the spawn wiring (step 4) land.
+		// Retired multi-worker placement copy (warren-135b / pl-9ba1 step 2).
+		// The workers + burrows placement tables were dropped in warren-3743 once
+		// LocalProvider absorbed the single-burrow runtime; new runs write NULL.
+		// The column is retained (nullable, unwritten) so historical rows keep
+		// their value. All reads tolerate NULL (preview / proxy treat null as the
+		// local worker). The `runs_worker_state_idx` index is likewise retained.
 		workerId: text("worker_id"),
 		// Optional back-link to the seeds issue this run was dispatched against
 		// (pl-bb70 step 3, warren-805a). Threaded through POST /runs → spawnRun →
@@ -288,67 +297,6 @@ export const triggers = sqliteTable(
 );
 
 /**
- * Multi-worker placement registry (warren-b0a3 / pl-9ba1 step 1, parent
- * warren-6747).
- *
- * Each row is one burrow worker warren can dispatch to. `name` is the stable
- * operator-chosen handle (used in URLs like `POST /workers/:name/drain` and
- * referenced by `burrows.worker_id` / `runs.worker_id` once those columns
- * land in step 2). `url` is the transport target (`unix:///var/run/burrow.sock`
- * or `http://host:port`); `BurrowClientPool` (step 3) builds an `HttpClient`
- * per row keyed by name.
- *
- * The bearer token is intentionally NOT stored here: the deploy uses a single
- * shared `BURROW_API_TOKEN` env var across the pool (plan alternative #3 —
- * VPC-private threat model; rotation = one env-var update across the fleet).
- *
- * Zero-row table is the steady state for today's single-worker deploys —
- * `BurrowClientPool` synthesizes a local row from `WARREN_BURROW_*` env vars
- * when this table is empty, preserving back-compat (acceptance #1). Operators
- * with a `[workers]` block in warren config materialize rows here at boot
- * (step 7 lands that loader).
- */
-export const workers = sqliteTable(TABLE_NAMES.workers, {
-	name: text("name").primaryKey(),
-	url: text("url").notNull(),
-	state: text("state", { enum: WORKER_STATES }).notNull().default("healthy"),
-	addedAt: text("added_at").notNull(),
-});
-
-/**
- * Per-burrow worker assignment (warren-135b / pl-9ba1 step 2).
- *
- * Source of truth for `{burrow_id → worker_id}`. One row per burrow warren
- * has provisioned; written at burrow-create time (step 4 wires the spawn
- * flow), read by `clientFor({burrowId})` on every sticky-by-burrow request
- * (stream / cancel / steer / events tail) so warren routes to the worker
- * that physically holds the sandbox + burrow-side SQLite row.
- *
- * `runs.worker_id` is a denormalized copy of this column written at
- * run-create time so streaming paths don't have to join.
- *
- * `worker_id` is plain text without a FK to `workers.name` because the
- * zero-config single-worker deploy uses a synthetic local worker that has
- * no row in `workers` (back-compat with today's `WARREN_BURROW_*` env-var
- * deploys; the loader in step 7 materializes rows only when a `[workers]`
- * block is configured).
- *
- * Sticky-by-burrow is the design (plan risk #5): if the row's `worker_id`
- * points at an `unreachable` worker, `placeForBurrow` fails loudly rather
- * than silently migrating. Operators drain + remove a dead worker to clear
- * orphans (`warren doctor` will surface them as `worker_missing`).
- */
-export const burrows = sqliteTable(
-	TABLE_NAMES.burrows,
-	{
-		id: text("id").primaryKey(),
-		workerId: text("worker_id").notNull(),
-		addedAt: text("added_at").notNull(),
-	},
-	(t) => [index(INDEX_NAMES.burrowsWorker).on(t.workerId)],
-);
-
-/**
  * Plan-run coordinator state (pl-a258 step 2 / warren-4d7c). One row per
  * `POST /plan-runs` dispatch. The coordinator (warren-2623) walks
  * `plan_run_children` in `seq` order, spawning one warren run per open
@@ -460,10 +408,6 @@ export type EventRow = typeof events.$inferSelect;
 export type EventInsert = typeof events.$inferInsert;
 export type TriggerRow = typeof triggers.$inferSelect;
 export type TriggerInsert = typeof triggers.$inferInsert;
-export type WorkerRow = typeof workers.$inferSelect;
-export type WorkerInsert = typeof workers.$inferInsert;
-export type BurrowRow = typeof burrows.$inferSelect;
-export type BurrowInsert = typeof burrows.$inferInsert;
 /**
  * Plots projection (warren-9022). A read-cache that
  * mirrors full git-backed Plot state — NOT an authoritative store; source of
@@ -552,6 +496,40 @@ export const messages = sqliteTable(
 	(t) => [index(INDEX_NAMES.messagesConversationSeq).on(t.conversationId, t.seq)],
 );
 
+/**
+ * Run inbox (warren-3d0b, pl-829f step 18). The durable steering channel for
+ * pod-per-run K8s runs: with no live socket into the sandbox, warren persists
+ * each steering message here and the in-pod agent harness polls
+ * `GET /runs/:id/inbox` over the Service-DNS callback URL to drain it. The
+ * K8sProvider's `sendMessage` writes the row; the poll endpoint claims unread
+ * rows priority-desc then FIFO-by-`seq` and atomically flips them `delivered`.
+ *
+ * `run_id` FKs `runs.id` ON DELETE CASCADE (a run's undelivered steers die with
+ * it). `seq` is monotonic per run (allocated max+1 under the enqueue
+ * transaction, mirroring `messages.seq`) so FIFO ordering within a priority
+ * class is deterministic even when two rows share a `created_at` millisecond.
+ * `state` defaults to `unread`; `delivered_at` is the ISO-8601 claim timestamp,
+ * null until a poll delivers the row. Mirrors the seam `Message` shape
+ * (`src/runtime/contract.ts`) so the provider maps a row onto it without loss.
+ */
+export const runInbox = sqliteTable(
+	TABLE_NAMES.runInbox,
+	{
+		id: text("id").primaryKey(),
+		runId: text("run_id")
+			.notNull()
+			.references(() => runs.id, { onDelete: "cascade" }),
+		seq: integer("seq").notNull(),
+		body: text("body").notNull(),
+		priority: text("priority", { enum: INBOX_PRIORITIES }).notNull().default("normal"),
+		fromActor: text("from_actor").notNull().default("operator"),
+		state: text("state", { enum: INBOX_STATES }).notNull().default("unread"),
+		createdAt: text("created_at").notNull(),
+		deliveredAt: text("delivered_at"),
+	},
+	(t) => [index(INDEX_NAMES.runInboxRunState).on(t.runId, t.state)],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
@@ -562,3 +540,5 @@ export type ConversationRow = typeof conversations.$inferSelect;
 export type ConversationInsert = typeof conversations.$inferInsert;
 export type MessageRow = typeof messages.$inferSelect;
 export type MessageInsert = typeof messages.$inferInsert;
+export type RunInboxRow = typeof runInbox.$inferSelect;
+export type RunInboxInsert = typeof runInbox.$inferInsert;

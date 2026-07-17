@@ -138,9 +138,24 @@ export const scenario: Scenario = {
 			typeof r1Body.burrow?.id === "string" && r1Body.burrow.id === r1.burrowId,
 			"POST /runs response.burrow.id matches run.burrowId",
 		);
-		assertTrue(
-			typeof r1Body.burrow?.workspacePath === "string" && r1Body.burrow.workspacePath.length > 0,
-			"POST /runs response.burrow.workspacePath is populated",
+		// workspacePath is intentionally an empty string post-RuntimeProvider
+		// seam (warren-1f56): a burrow host path has no provider-neutral home,
+		// so the seam's RunHandle drops it and dispatch returns
+		// `workspacePath: ""` (src/runs/spawn/dispatch.ts). It survives only as
+		// a display-only field slated for removal with the multi-worker /
+		// `/burrows` surface (design §5.C). Re-tighten this to assert a real
+		// path if/when §5.C reinstates a provider-neutral workspace handle.
+		//
+		// warren-5af5: assert the EXACT contract value (`""`) rather than the
+		// weaker "is a string" — the empty string is the deliberate seam
+		// output, and locking it means a regression that leaves a stale host
+		// path (or emits some other non-empty value) is caught here instead of
+		// silently passing. The field's presence is asserted by the strict
+		// equality itself (`undefined !== ""`).
+		assertEqual(
+			r1Body.burrow?.workspacePath,
+			"",
+			'POST /runs response.burrow.workspacePath is exactly "" (seam drops host path until §5.C — warren-1f56)',
 		);
 
 		// rendered_agent_json populated and matches the cached envelope.

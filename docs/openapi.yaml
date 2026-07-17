@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: warren HTTP API
-  version: 0.9.10
+  version: 0.10.0
   description: >-
     Auto-generated from `src/server/handlers/index.ts`'s `ROUTE_TABLE`. Run `bun run gen:openapi` to
     refresh; CI fails if this schema drifts from the handler module. Request/response bodies are
@@ -15,8 +15,6 @@ tags:
     description: '`/alerts` routes.'
   - name: analytics
     description: '`/analytics` routes.'
-  - name: burrows
-    description: '`/burrows` routes.'
   - name: conversations
     description: '`/conversations` routes.'
   - name: meta
@@ -35,8 +33,6 @@ tags:
     description: '`/projects` routes.'
   - name: runs
     description: '`/runs` routes.'
-  - name: workers
-    description: '`/workers` routes.'
 paths:
   /agents:
     get:
@@ -124,34 +120,6 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
-  /burrows:
-    get:
-      operationId: listBurrowsHandler
-      tags:
-        - burrows
-      summary: GET /burrows
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-  /burrows/{id}:
-    get:
-      operationId: getBurrowHandler
-      tags:
-        - burrows
-      summary: GET /burrows/:id
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
   /conversations:
     get:
       operationId: listConversationsHandler
@@ -853,6 +821,64 @@ paths:
           required: true
           schema:
             type: string
+  /runs/{id}/finalize-intent:
+    get:
+      operationId: getRunFinalizeIntentHandler
+      tags:
+        - runs
+      summary: GET /runs/:id/finalize-intent
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: >-
+        warren-0d35: the in-pod finalize callback for the K8s backend — the pod fetches the reap
+        intent, runs the workspace-dependent half in place, and POSTs the FinalizeResult back.
+        Bearer-gated; the pod carries WARREN_API_TOKEN.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /runs/{id}/finalize-result:
+    post:
+      operationId: postRunFinalizeResultHandler
+      tags:
+        - runs
+      summary: POST /runs/:id/finalize-result
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /runs/{id}/inbox:
+    get:
+      operationId: pollRunInboxHandler
+      tags:
+        - runs
+      summary: GET /runs/:id/inbox
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: >-
+        warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs
+        route; the pod carries WARREN_API_TOKEN.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /runs/{id}/preview/login:
     get:
       operationId: previewLoginHandler
@@ -915,31 +941,3 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
-  /workers:
-    get:
-      operationId: listWorkersHandler
-      tags:
-        - workers
-      summary: GET /workers
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-  /workers/{name}/drain:
-    post:
-      operationId: drainWorkerHandler
-      tags:
-        - workers
-      summary: POST /workers/:name/drain
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: name
-          in: path
-          required: true
-          schema:
-            type: string

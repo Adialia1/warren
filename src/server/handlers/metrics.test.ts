@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { MetricsRegistry } from "../../observability/metrics-registry.ts";
 import { RunEventBroker } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { bearerAuth } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import { startServer } from "../server.ts";
@@ -25,21 +26,18 @@ async function depsFor(
 	db: WarrenDb,
 	registry?: MetricsRegistry,
 ): Promise<ServerDeps> {
-	const client = makeBurrowClient();
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const burrowClientPool = new BurrowClientPool({ repos });
-	burrowClientPool.register("local", client);
+	const burrowClient = makeBurrowClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({
 		repos,
 		broker,
-		burrowClientPool,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 	});
 	return {
 		repos,
 		db,
-		burrowClientPool,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		broker,
 		bridges,
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
@@ -72,7 +70,7 @@ describe("GET /metrics", () => {
 		await db.close();
 	});
 
-	test("is auth-exempt and exposes run/bridge gauges + registry counters", async () => {
+	test("is bearer-gated (warren-682a) and exposes run/bridge gauges + registry counters", async () => {
 		const registry = new MetricsRegistry();
 		registry.increment("warren_log_messages_total", { level: "warn" });
 		registry.increment("warren_log_messages_total", { level: "error" });
@@ -82,8 +80,12 @@ describe("GET /metrics", () => {
 			auth: bearerAuth(TOKEN),
 			logger: silentLogger,
 		});
-		// No Authorization header — must still return 200.
-		const res = await fetch(`${tcpUrl(handle)}/metrics`);
+		// No Authorization header — the scrape surface is gated.
+		const unauthed = await fetch(`${tcpUrl(handle)}/metrics`);
+		expect(unauthed.status).toBe(401);
+		const res = await fetch(`${tcpUrl(handle)}/metrics`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toBe("text/plain; version=0.0.4; charset=utf-8");
 		const body = await res.text();
@@ -97,6 +99,47 @@ describe("GET /metrics", () => {
 		expect(body).toContain('warren_log_messages_total{level="error"} 1');
 	});
 
+	test("appends K8s pod-phase gauges when a pod-metrics source is wired", async () => {
+		const deps: ServerDeps = {
+			...(await depsFor(repos, db)),
+			podMetrics: {
+				metricsSnapshot: () => ({
+					phaseCounts: { Pending: 2, Running: 3 },
+					pendingDurationSeconds: 17,
+					lastInitDurationSeconds: 4.5,
+				}),
+			},
+		};
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: bearerAuth(TOKEN),
+			logger: silentLogger,
+		});
+		const res = await fetch(`${tcpUrl(handle)}/metrics`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
+		const body = await res.text();
+		expect(body).toContain("# TYPE warren_run_pod_phase gauge");
+		expect(body).toContain('warren_run_pod_phase{phase="Pending"} 2');
+		expect(body).toContain('warren_run_pod_phase{phase="Running"} 3');
+		expect(body).toContain("warren_pod_pending_duration_seconds 17");
+		expect(body).toContain("warren_workspace_init_duration_seconds 4.5");
+	});
+
+	test("omits pod-phase gauges when no pod-metrics source is wired (LocalProvider)", async () => {
+		const deps = await depsFor(repos, db);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: bearerAuth(TOKEN),
+			logger: silentLogger,
+		});
+		const res = await fetch(`${tcpUrl(handle)}/metrics`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
+		const body = await res.text();
+		expect(body).not.toContain("warren_run_pod_phase");
+	});
+
 	test("rejects non-GET with a 405 JSON envelope", async () => {
 		const deps = await depsFor(repos, db);
 		handle = startServer(deps, {
@@ -104,7 +147,10 @@ describe("GET /metrics", () => {
 			auth: bearerAuth(TOKEN),
 			logger: silentLogger,
 		});
-		const res = await fetch(`${tcpUrl(handle)}/metrics`, { method: "POST" });
+		const res = await fetch(`${tcpUrl(handle)}/metrics`, {
+			method: "POST",
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
 		expect(res.status).toBe(405);
 	});
 });

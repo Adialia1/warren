@@ -32,6 +32,9 @@ domains:
   reap: {}
   quality: {}
   plan-runs: {}
+  k8s-migration: {}
+  runtime: {}
+  ecosystem: {}
 governance:
   max_entries: 100
   warn_entries: 150

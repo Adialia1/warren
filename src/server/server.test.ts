@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
+import { BurrowClient } from "../burrow-client/index.ts";
 import { ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { RunEventBroker } from "../runs/index.ts";
+import { checkBurrowPoolReachable } from "../runtime/local/diagnostics/burrow.ts";
+import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 import { startServer } from "./server.ts";
@@ -59,21 +61,20 @@ async function depsFor(
 	} = {},
 ): Promise<ServerDeps> {
 	const burrowClient = makeBurrowClient();
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const burrowClientPool = new BurrowClientPool({ repos });
-	burrowClientPool.register("local", burrowClient);
 	const broker = new RunEventBroker();
 	return {
 		repos,
 		...(overrides.db !== undefined ? { db: overrides.db } : {}),
-		burrowClientPool,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		// warren-f796: the readyz burrow probe is a boot-wired thunk (LocalBootBackend).
+		burrowProbe: () => checkBurrowPoolReachable(burrowClient),
 		broker,
 		bridges:
 			bridges ??
 			createBridgeRegistry({
 				repos,
 				broker,
-				burrowClientPool,
+				runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		canopyConfig: {

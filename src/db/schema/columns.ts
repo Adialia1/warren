@@ -70,6 +70,27 @@ export const MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
 export type MessageRole = (typeof MESSAGE_ROLES)[number];
 
 /**
+ * Steering-message priority classes for the `run_inbox` table (warren-3d0b,
+ * pl-829f step 18). Mirrors the seam's `MessagePriority`
+ * (`src/runtime/contract.ts`) verbatim so the K8sProvider can forward the
+ * contract value straight onto a row without translation. Ordering is
+ * `urgent > high > normal > low`; the poll endpoint claims priority-desc then
+ * FIFO-by-`seq` within a class. TS-only narrowing — no SQL CHECK (mx-2ab984).
+ */
+export const INBOX_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export type InboxPriority = (typeof INBOX_PRIORITIES)[number];
+
+/**
+ * Delivery lifecycle for a `run_inbox` row (warren-3d0b). Mirrors the seam
+ * `Message.state` union: a fresh steering message is `unread`; the in-pod
+ * poll (`GET /runs/:id/inbox`) atomically flips claimed rows to `delivered`;
+ * `failed` is reserved for a delivery that could not be completed (symmetry
+ * with burrow's inbox lifecycle — LocalProvider parity). TS-only narrowing.
+ */
+export const INBOX_STATES = ["unread", "delivered", "failed"] as const;
+export type InboxState = (typeof INBOX_STATES)[number];
+
+/**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
  * (warren-e96f). Both kinds share the parent back-link column but differ in
  * workspace semantics:
@@ -127,8 +148,14 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     workspace tree was still dirty at reap — the agent edited/staged
  *     work but never ran `git commit` (the common weak-model failure,
  *     e.g. Gemini Flash narrating "before committing" then exiting).
- *     Distinguished from a deliberate no-op (clean tree, zero commits)
- *     which stays `succeeded`. Marking the run `failed` keeps a dropped
+ *     Distinguished from a deliberate no-op — a clean tree with zero
+ *     commits, OR a dirty tree whose ONLY uncommitted paths are
+ *     warren-managed bookkeeping artifacts (`.mulch/`, `.seeds/`,
+ *     `.plot/`, `.canopy/`; warren-89b0) — which stays `succeeded` and
+ *     is surfaced as `noChanges` on `reap.empty_push` / `reap.completed`.
+ *     The dropped-commit guard stays conservative: any non-bookkeeping
+ *     dirty path (real uncommitted work) still fails the run. Marking a
+ *     genuine dropped commit `failed` keeps it
  *     commit from masquerading as success and, on plan-runs, fails the
  *     plan instead of silently auto-merging/advancing past the child.
  *   - `provider_error` (warren-edc3) means the agent's terminal model
@@ -144,6 +171,29 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     seed close / plan-run advance. The provider message is surfaced on
  *     the `reap.provider_error` event; `failure_reason` carries only the
  *     discriminator (the column is enum-narrowed, not free text).
+ *   - `finalize_failed` (warren-495d) means reap's finalize did NOT
+ *     complete its branch push before it timed out or failed — under K8s
+ *     the in-pod finalize round-trip (git push → mirror deltas → POST the
+ *     result) can time out (`WARREN_K8S_FINALIZE_TIMEOUT_MS`, default
+ *     120s) or the pod can vanish / reach a terminal phase before it
+ *     posts a result, yielding a structured FAILED `FinalizeResult` with
+ *     `pushed:false`. Marking the run `failed` (instead of letting it
+ *     masquerade as `succeeded`) keeps a run whose commits never reached
+ *     origin from reporting success — and pairs with reap PRESERVING the
+ *     workspace (skipping `terminate`) so the agent's commits stay
+ *     recoverable instead of being silently destroyed. Distinct from
+ *     `dropped_commit` (push succeeded but landed zero commits over a
+ *     still-dirty tree): here the push itself never completed.
+ *   - `oom_killed` (warren-9cce) means the agent container was cgroup
+ *     OOM-killed — burrow's `oomKilled()` probe or the K8s
+ *     `terminated.reason=="OOMKilled"` signal, carried through the run-state
+ *     probe's `terminalReason` onto the finalized row.
+ *   - `evicted` (warren-c0cd) means the kubelet evicted the run pod under node
+ *     resource pressure (K8s `status.reason=="Evicted"`) — most often
+ *     ephemeral-storage exhaustion (the emptyDir workspace outgrowing its
+ *     budget). K8s-only; distinct from `oom_killed` (a container cgroup kill)
+ *     and `crashed` (an agent fault) because an eviction is an infra-capacity
+ *     signal. Surfaced via the run-state probe's `terminalReason`.
  *
  * Null on succeeded/cancelled rows.
  */
@@ -155,7 +205,10 @@ export const RUN_FAILURE_REASONS = [
 	"burrow_run_lost",
 	"burrow_unreachable",
 	"dropped_commit",
+	"finalize_failed",
 	"provider_error",
+	"oom_killed",
+	"evicted",
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 
@@ -180,23 +233,6 @@ export type EventStream = (typeof EVENT_STREAMS)[number];
  */
 export const PREVIEW_STATES = ["starting", "live", "failed", "torn-down"] as const;
 export type PreviewState = (typeof PREVIEW_STATES)[number];
-
-/**
- * Worker state machine (warren-b0a3 / pl-9ba1 step 1).
- *
- *   - `healthy`     — probe succeeded; eligible for new burrow placement.
- *   - `draining`    — operator-initiated; existing burrows continue to run,
- *                     but `placeFor` skips this worker for new placement.
- *                     Set by `POST /workers/:name/drain` (step 6).
- *   - `unreachable` — probe failed; sticky-by-burrow requests against this
- *                     worker fail loudly rather than silently migrating
- *                     (plan risk #5). Flipped back to `healthy` when probe
- *                     recovers (step 6).
- *
- * A fourth `failed` state is deferred to a future R-NN (plan step 1 prose).
- */
-export const WORKER_STATES = ["healthy", "draining", "unreachable"] as const;
-export type WorkerState = (typeof WORKER_STATES)[number];
 
 /**
  * Plan-run lifecycle (pl-a258 step 2 / warren-4d7c). One row per dispatched
@@ -291,13 +327,12 @@ export const TABLE_NAMES = {
 	runs: "runs",
 	events: "events",
 	triggers: "triggers",
-	workers: "workers",
-	burrows: "burrows",
 	planRuns: "plan_runs",
 	planRunChildren: "plan_run_children",
 	plots: "plots",
 	conversations: "conversations",
 	messages: "messages",
+	runInbox: "run_inbox",
 } as const;
 
 /**
@@ -321,7 +356,6 @@ export const INDEX_NAMES = {
 	eventsRunSeq: "events_run_seq_idx",
 	eventsRunTs: "events_run_ts_idx",
 	triggersProject: "triggers_project_idx",
-	burrowsWorker: "burrows_worker_idx",
 	// R-03 step 1 (pl-fef5, warren-094a): agents are addressed by (name,
 	// project_id). The composite enforces uniqueness for project-tier rows
 	// (project_id non-null). The partial index enforces a single global row
@@ -353,6 +387,11 @@ export const INDEX_NAMES = {
 	conversationsProject: "conversations_project_idx",
 	conversationsPlot: "conversations_plot_idx",
 	messagesConversationSeq: "messages_conversation_seq_idx",
+	// warren-3d0b. The run_inbox poll claims unread rows for one run
+	// (`GET /runs/:id/inbox`): the composite (run_id, state) makes the
+	// undelivered-per-run claim a covered index scan instead of a full-table
+	// filter, and FIFO ordering within the claimed set is done in-app by seq.
+	runInboxRunState: "run_inbox_run_state_idx",
 } as const;
 
 /**

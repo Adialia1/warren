@@ -53,7 +53,7 @@ export {
 	resolveRunBranchPrefix,
 } from "./branch.ts";
 export { type ParsedBurrowConfig, parseBurrowConfig } from "./burrow-config.ts";
-export { type CancelRunInput, type CancelRunResult, cancelRun } from "./cancel.ts";
+export { type CancelReap, type CancelRunInput, type CancelRunResult, cancelRun } from "./cancel.ts";
 export {
 	type BootConversationIdleDetectorInput,
 	bootConversationIdleDetector,
@@ -101,6 +101,11 @@ export {
 	tailRunEvents,
 } from "./events.ts";
 export {
+	type PollRunInboxInput,
+	type PollRunInboxResult,
+	pollRunInbox,
+} from "./inbox.ts";
+export {
 	bootPauseDetector,
 	defaultPlotEventReader,
 	extractAnswerText,
@@ -139,7 +144,7 @@ export {
 export {
 	type BuildSeedFilesResult,
 	buildSeedFiles,
-	type HttpWorkspaceFile,
+	type SeedFile,
 } from "./seed.ts";
 export {
 	DEFAULT_DISPATCHER_HANDLE,
@@ -189,6 +194,7 @@ export {
 	WATCHDOG_TIMED_OUT_KIND,
 	type WatchdogConfig,
 	type WatchdogHandle,
+	type WatchdogReap,
 	type WatchdogTickDeps,
 	type WatchdogTickResult,
 } from "./watchdog.ts";

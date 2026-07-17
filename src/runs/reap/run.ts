@@ -1,6 +1,5 @@
-import type { BurrowClient } from "../../burrow-client/client.ts";
-import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
+import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
@@ -13,6 +12,12 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const fs = input.fs ?? defaultFs;
 	const exec = input.exec ?? defaultExec;
 	const now = input.now ?? (() => new Date());
+	// Runtime-provider seam (warren-1f56). The workspace-dependent half of reap
+	// (finalize) + the sandbox teardown (terminate) + workspace resolution route
+	// through this. REQUIRED since warren-e24d: reap no longer builds a fallback
+	// burrow-backed provider, so it holds no burrow client of its own — the boot
+	// wiring (and tests) construct the provider and thread it in.
+	const provider: RuntimeProvider = input.runtimeProvider;
 
 	const run = await input.repos.runs.require(input.runId);
 	const log = bindBridgeLogger(input.logger, { run_id: run.id }); // warren-9f06: bind run_id once
@@ -74,22 +79,38 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		await emit("reap_failed", stepError);
 		log.error({ event: "reap.step_failed", step, err: message, path }, "reap step failed");
 	};
+	// Fold a finalize failed-stage into `errors[]` WITHOUT re-emitting — the
+	// matching `reap_failed` event already rode `FinalizeResult.events` and was
+	// re-emitted by the pipeline (warren-1f56).
+	const recordError = (step: ReapStep, message: string): void => {
+		errors.push({ step, message });
+		log.error({ event: "reap.step_failed", step, err: message }, "reap step failed");
+	};
 
 	const state = createPipelineState();
 
 	let workspacePath: string | null = null;
 	let branch: string | null = null;
-	let workerClient: BurrowClient | null = null;
+	// warren-e9e1: resolve the workspace path + branch through the provider seam,
+	// not a direct `burrows.get`. LocalProvider returns the live burrow worktree
+	// path + branch (byte-identical to reap's old inline lookup); K8sProvider
+	// returns `{ workspacePath: null, branch }` — the pod's `/workspace` is
+	// host-unreachable, so there is no host path, but a succeeded K8s run must
+	// still reach the pipeline + `finalize` (which runs in-pod). `resolved`
+	// staying null means resolution FAILED (a live burrow 404 / API error); the
+	// pipeline is skipped and `workspace_lookup` is recorded, exactly as before.
+	let resolved: WorkspaceInfo | null = null;
 	if (run.burrowId === null) {
 		await fail("workspace_lookup", new Error("run has no burrow_id; nothing to reap from"));
 	} else {
 		try {
-			workerClient = (await input.burrowClientPool.clientFor({ burrowId: run.burrowId })).client;
-			const burrow = await withTransportMapping(workerClient.config, () =>
-				(workerClient as BurrowClient).http.burrows.get(run.burrowId as string),
-			);
-			workspacePath = burrow.workspacePath;
-			branch = typeof burrow.branch === "string" && burrow.branch !== "" ? burrow.branch : null;
+			resolved = await provider.workspaceInfo({
+				runId: run.id,
+				sandboxId: run.burrowId,
+				providerRunId: run.burrowRunId ?? "",
+			});
+			workspacePath = resolved.workspacePath;
+			branch = resolved.branch;
 		} catch (err) {
 			await fail("workspace_lookup", err);
 		}
@@ -102,11 +123,16 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 
 	// warren-df71: a conversation run must NOT push a branch / commit `.plot/`
 	// / open a PR (send-off owns its plotSync PR; this pipeline made junk PRs).
-	if (run.mode === "conversation" && workspacePath !== null) {
+	// warren-e9e1: the pipeline gate keys on `resolved !== null` (workspace info
+	// resolved) rather than a host `workspacePath` existing — under K8s the path
+	// is legitimately null but the run is still finalizable in-pod. For the
+	// LocalProvider path `resolved !== null` iff the burrow lookup succeeded,
+	// which always yielded a host path, so the gate is byte-identical.
+	if (run.mode === "conversation" && resolved !== null) {
 		await emit("reap.branch_push_skipped", { reason: "conversation_run" });
-	} else if (stateOnEntry === "queued" && workspacePath !== null && project !== null) {
+	} else if (stateOnEntry === "queued" && resolved !== null && project !== null) {
 		await emit("reap.never_started_skip", { message: "agent never ran; skipping pipeline" });
-	} else if (stateOnEntry !== "queued" && workspacePath !== null && project !== null) {
+	} else if (stateOnEntry !== "queued" && resolved !== null && project !== null) {
 		await runReapPipeline(
 			{
 				input: pipelineInput,
@@ -115,17 +141,19 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 				workspacePath,
 				branch,
 				baseBranch,
-				workerClient,
+				...(input.previewSidecars !== undefined ? { previewSidecars: input.previewSidecars } : {}),
+				provider,
 				fs,
 				exec,
 				now,
 				log,
 				emit,
 				fail,
+				recordError,
 			},
 			state,
 		);
-	} else if (workspacePath !== null && project === null) {
+	} else if (resolved !== null && project === null) {
 		await emit("reap.orphaned", {
 			projectId: run.projectId,
 			message: "project was deleted; skipping mulch merge, seeds close, and branch push",
@@ -137,8 +165,13 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// warren-edc3: a terminal provider error does the same — and blocks the
 	// bookkeeping-only PR / seed close / plan-run advance that would
 	// otherwise ship a no-code PR and discard the agent's uncommitted edits.
+	// warren-495d: a finalize that timed out / failed before the branch push
+	// completed leaves the agent's commits unpushed — flip an otherwise-
+	// succeeded run to `failed`/`finalize_failed` so it can't report success
+	// while its work sits only on the (soon-to-be-destroyed) workspace.
+	const finalizeFailed = state.finalizeFailed && input.outcome === "succeeded";
 	const effectiveOutcome: RunTerminalState =
-		state.droppedCommit || failedFromProviderError ? "failed" : input.outcome;
+		state.droppedCommit || failedFromProviderError || finalizeFailed ? "failed" : input.outcome;
 
 	if (failedFromProviderError) {
 		await emit("reap.provider_error", { message: providerErrorMessage });
@@ -149,6 +182,8 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		failureReason = "dropped_commit";
 	} else if (failedFromProviderError) {
 		failureReason = "provider_error";
+	} else if (finalizeFailed) {
+		failureReason = "finalize_failed";
 	} else if (effectiveOutcome === "failed") {
 		failureReason =
 			input.failureReason ?? (await inferFailureReason(input.repos, run.id, stateOnEntry));
@@ -186,6 +221,9 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		},
 		branchPushed: state.branchPushed,
 		commitsAhead: state.commitsAhead,
+		// warren-89b0: distinguish a deliberate no-op (succeeded, non-alarming)
+		// from a dropped commit (failed) for operators reading the terminal event.
+		noChanges: state.noChanges,
 		prUrl: state.prUrl,
 		previewState: state.previewLaunchState,
 		previewPort: state.previewLaunchPort,
@@ -203,11 +241,22 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// skipped for conversation runs and still-live previews, and a failure
 	// surfaces as `reap_failed` step=`workspace_destroy` without blocking
 	// the terminal-state transition above.
+	// Route the sandbox teardown through the provider seam (warren-1f56). The
+	// `terminate` closure is null when the run has no burrow or reap never
+	// resolved the worker — the same skip the old `workerClient === null` gate had.
+	const workspaceHandle: RunHandle | null =
+		run.burrowId !== null
+			? { runId: run.id, sandboxId: run.burrowId, providerRunId: run.burrowRunId ?? "" }
+			: null;
+	const terminate = workspaceHandle !== null ? () => provider.terminate(workspaceHandle) : null;
 	const workspaceDestroyed = await runWorkspaceDestroy({
 		run,
 		previewLaunchState: state.previewLaunchState,
-		workerClient,
-		repos: input.repos,
+		// warren-495d: preserve the workspace when the branch push never completed
+		// — the agent's commits live only here, so destroying it would silently
+		// lose them. The eviction/GC path can reclaim it later once recovered.
+		branchPushFailed: state.finalizeFailed,
+		terminate,
 		emit,
 		fail: (step, err) => fail(step, err),
 	});

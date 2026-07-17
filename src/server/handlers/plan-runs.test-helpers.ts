@@ -1,4 +1,4 @@
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type {
@@ -9,6 +9,7 @@ import type {
 } from "../../plan-runs/plot-appender.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
 import { RunEventBroker } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import type { BridgeRegistry, Logger, ServeHandle, ServerDeps } from "../types.ts";
 
@@ -74,15 +75,12 @@ export function seedShowResult(id: string, status: "open" | "closed"): SpawnResu
 	};
 }
 
-export async function poolFor(repos: Repos): Promise<BurrowClientPool> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
+export async function poolFor(_repos: Repos): Promise<BurrowClient> {
 	const client = new BurrowClient({
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
 		fetch: stubFetch(async () => jsonRes(404, { error: { code: "not_found", message: "stub" } })),
 	});
-	pool.register("local", client);
-	return pool;
+	return client;
 }
 
 export interface BuildDepsInput {
@@ -104,14 +102,14 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 	const pool = await poolFor(input.repos);
 	return {
 		repos: input.repos,
-		burrowClientPool: pool,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => pool }),
 		broker,
 		bridges:
 			input.bridges ??
 			createBridgeRegistry({
 				repos: input.repos,
 				broker,
-				burrowClientPool: pool,
+				runtimeProvider: resolveRuntimeProvider({ burrowClient: () => pool }),
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

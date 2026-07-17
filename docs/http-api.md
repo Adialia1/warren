@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **60**.
+Total routes: **59**.
 
 ## /agents
 
@@ -30,13 +30,6 @@ Total routes: **60**.
 | `GET` | `/analytics/cost` | `listCostAnalyticsHandler` |  |
 | `GET` | `/analytics/runs` | `listRunAnalyticsHandler` |  |
 | `GET` | `/analytics/behavior` | `listBehaviorAnalyticsHandler` |  |
-
-## /burrows
-
-| Method | Pattern | Handler | Notes |
-| --- | --- | --- | --- |
-| `GET` | `/burrows` | `listBurrowsHandler` |  |
-| `GET` | `/burrows/:id` | `getBurrowHandler` |  |
 
 ## /conversations
 
@@ -131,6 +124,9 @@ Total routes: **60**.
 | `POST` | `/runs` | `createRunHandler` |  |
 | `GET` | `/runs/:id` | `getRunHandler` |  |
 | `GET` | `/runs/:id/events` | `streamRunEventsHandler` |  |
+| `GET` | `/runs/:id/inbox` | `pollRunInboxHandler` | warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs route; the pod carries WARREN_API_TOKEN. |
+| `GET` | `/runs/:id/finalize-intent` | `getRunFinalizeIntentHandler` | warren-0d35: the in-pod finalize callback for the K8s backend — the pod fetches the reap intent, runs the workspace-dependent half in place, and POSTs the FinalizeResult back. Bearer-gated; the pod carries WARREN_API_TOKEN. |
+| `POST` | `/runs/:id/finalize-result` | `postRunFinalizeResultHandler` |  |
 | `POST` | `/runs/:id/steer` | `steerRunHandler` |  |
 | `POST` | `/runs/:id/cancel` | `cancelRunHandler` |  |
 | `GET` | `/runs/:id/preview/login` | `previewLoginHandler` |  |
@@ -141,10 +137,3 @@ Total routes: **60**.
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/version` | `versionHandler` |  |
-
-## /workers
-
-| Method | Pattern | Handler | Notes |
-| --- | --- | --- | --- |
-| `GET` | `/workers` | `listWorkersHandler` |  |
-| `POST` | `/workers/:name/drain` | `drainWorkerHandler` |  |

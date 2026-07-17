@@ -21,13 +21,13 @@
  * error); the coordinator catches and marks the child failed.
  */
 
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunRow } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { resolveTargetProject } from "../projects/resolve-target.ts";
 import { spawnRun } from "../runs/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import { readTargetRepo, type SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { BridgeRegistry } from "../server/types.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
@@ -71,7 +71,13 @@ export function createResolveExecution(
 
 export interface CreatePlanRunSpawnInput {
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * Resolved runtime provider (warren-c42c: required — the spawn seam is now
+	 * exclusively `provider.create()`, no burrow-client fallback). Boot threads
+	 * the boot-selected instance (`resolveRuntimeProvider`, honoring
+	 * `WARREN_RUNTIME`); `spawnRun` dispatches through it.
+	 */
+	readonly runtimeProvider: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -98,7 +104,7 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 		const ref = planRun.ref ?? project.defaultBranch;
 		const result = await spawnRunFn({
 			repos: input.repos,
-			burrowClientPool: input.burrowClientPool,
+			runtimeProvider: input.runtimeProvider,
 			agentName: planRun.agentName,
 			projectId: exec.executionProjectId,
 			seedProjectId: planRun.projectId,
