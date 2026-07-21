@@ -35,6 +35,8 @@ domains:
   k8s-migration: {}
   runtime: {}
   ecosystem: {}
+  k8s-runtime: {}
+  scheduler: {}
 governance:
   max_entries: 100
   warn_entries: 150
