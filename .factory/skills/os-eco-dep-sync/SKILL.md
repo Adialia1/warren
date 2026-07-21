@@ -166,4 +166,6 @@ report that it's on `main`.
 - `CLAUDE.md` → "Relationship to burrow" and "Version Management" — the
   double-pin rule and the two-place version contract.
 - `Dockerfile` — the `bun install -g` block that bundles the six os-eco CLIs.
-- `.github/workflows/release.yml` — the version-sync gate and Fly deploy.
+- `.github/workflows/release.yml` — the version-sync gate, tag, and GitHub
+  release. Deploy is decoupled: `.github/workflows/deploy-gke.yml` rolls GKE
+  forward on a published release.

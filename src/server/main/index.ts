@@ -427,7 +427,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 /**
  * CLI entry. Allows `bun run src/server/main/index.ts` to act as the
  * warren serve binary the supervisor (Phase 12) execs. Catches startup
- * errors, formats them, and exits non-zero so docker/fly's restart
+ * errors, formats them, and exits non-zero so the orchestrator's restart
  * policy kicks in.
  */
 if (import.meta.main) {

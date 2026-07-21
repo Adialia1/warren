@@ -181,8 +181,10 @@ Auth is **GCP Workload Identity Federation** (`google-github-actions/auth`)
 | var | `WARREN_GIT_AUTHOR_EMAIL` | agent-commit author (`<id>+warren@users.noreply.github.com`); defaults to a noreply address if unset |
 | var | `WARREN_INGRESS_HOST` | optional public hostname; when set, patches the Ingress host + ManagedCertificate domain (both placeholders in the committed template) |
 
-The Fly.io deploy in `release.yml` is untouched — this pipeline is
-additive (Fly removal is tracked separately in warren-b65c).
+This is the only deploy pipeline: a published GitHub release (cut by
+`release.yml`) triggers the `release: [published]` path here, which
+builds the SHA-pinned images and rolls the cluster forward. There is no
+Fly.io deploy (removed in warren-b65c).
 
 ---
 

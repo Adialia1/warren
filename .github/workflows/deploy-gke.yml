@@ -10,8 +10,8 @@ name: GKE Build & Deploy
 # admin configures the OIDC provider + service account as secrets and the
 # project/region/cluster as repo variables (see docs/RUNBOOK-K8S.md §1.6).
 #
-# This is additive: the Fly.io deploy in release.yml is untouched (Fly removal
-# is tracked separately in warren-b65c).
+# This is the deploy path: a published GitHub release (cut by release.yml) or
+# an opt-in manual dispatch rolls GKE forward. There is no Fly.io deploy.
 
 on:
   push:

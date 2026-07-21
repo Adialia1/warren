@@ -21,7 +21,7 @@ The fresh-install path is standalone: the built-in `claude-code` agent ships inl
 
 Warren dispatches through a swappable **runtime provider**, chosen once at boot by `WARREN_RUNTIME` behind the `RuntimeProvider` contract (post-V1; `src/runtime/`, design docs under `docs/design/`). The default `local` provider uses [burrow](https://github.com/jayminwest/burrow) as its sandbox substrate — a sibling process inside the container that warren talks to over a unix socket — which is the topology this document describes throughout. A second `k8s` provider runs each agent as its own Kubernetes pod with no burrow, for cluster scale-out ([`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md)); it supersedes the multi-worker burrow model §5.4 originally sketched. Burrow is thus the LocalProvider's substrate, not a hard warren dependency.
 
-V1 is single-user, single-host: clone warren, `docker compose up`, browser at `localhost:8080`. The same image runs on Fly.io with a volume and three secrets. No cross-tenant story, no SaaS, no auth beyond a bearer token.
+V1 is single-user, single-host: clone warren, `docker compose up`, browser at `localhost:8080`. The same image scales out onto a Kubernetes cluster (GKE Autopilot is the hosted target) under the `k8s` runtime — see [`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md). No cross-tenant story, no SaaS, no auth beyond a bearer token.
 
 ---
 
@@ -68,7 +68,7 @@ Warren is a thin coordinator — most of the value is in the runtime plus whiche
 
 ### 3.1 V1 Goals
 
-- Single-image deploy: `docker compose up` on a home server, `fly deploy` on Fly.io, same Dockerfile.
+- Single-image deploy: `docker compose up` on a home server, `kubectl apply -k` on a cluster (GKE Autopilot), same Dockerfile.
 - Web UI for: agent registry, project list, run dispatch, live event tail, basic settings.
 - HTTP API mirroring the UI's surface so external scripts can drive warren.
 - Custom-agent-as-canopy-prompt: an agent is a single canopy prompt with required sections; warren auto-discovers from a connected canopy repo.
@@ -182,7 +182,7 @@ The agent's worklist (seeds) belongs to the project, not the agent. Same project
 ## 5. Architecture Overview
 
 ```
-┌─────── HOME SERVER (Linux container, Mac Pro / Fly.io / etc.) ────────┐
+┌─────── HOME SERVER (Linux container, Mac Pro / cloud VM / etc.) ──────┐
 │                                                                        │
 │   ┌────────────────────────┐                                           │
 │   │ warren                 │                                           │
@@ -242,7 +242,7 @@ security_opt:
 cap_add: [SYS_ADMIN]
 ```
 
-Verified empirically on Docker 28.4 / Ubuntu 24.04. Same recipe applies to Fly.io machines.
+Verified empirically on Docker 28.4 / Ubuntu 24.04. (These container flags apply to the `local` topology only; the `k8s` runtime has no bwrap — the pod boundary is the sandbox.)
 
 ### 5.4 Multi-worker model
 
@@ -428,7 +428,7 @@ warren/
 ├── CLAUDE.md
 ├── Dockerfile                  # extends ghcr.io/jayminwest/burrow-base
 ├── docker-compose.yml          # default home-server compose file
-├── fly.toml                    # default Fly deploy template
+├── deploy/k8s/                 # kustomize manifests (GKE Autopilot + kind)
 ├── src/
 │   ├── index.ts                # public library entry
 │   ├── core/
@@ -520,7 +520,7 @@ GET    /readyz                  — readiness (canopy reachable, burrow reachabl
 POST   /webhooks/github         — GitHub webhook target (event-driven trigger half of the scheduler)
 ```
 
-Auth: `Authorization: Bearer ${WARREN_API_TOKEN}` on every route except `/healthz`. Warren expects HTTPS termination at a reverse proxy (Caddy on home server, Fly's edge on Fly.io); it does not terminate TLS itself. Token is single-user, single-value, no rotation in V1 — see §11 for the security posture.
+Auth: `Authorization: Bearer ${WARREN_API_TOKEN}` on every route except `/healthz`. Warren expects HTTPS termination at a reverse proxy (Caddy on a home server, the cluster ingress on GKE); it does not terminate TLS itself. Token is single-user, single-value, no rotation in V1 — see §11 for the security posture.
 
 ### 8.2 CLI (admin-only)
 
@@ -631,29 +631,19 @@ open http://localhost:8080
 
 `docker-compose.yml` mounts a single named volume at `/data` and applies the bwrap-friendly security flags. Storage defaults to SQLite under `/data/warren.db`. To run against a managed Postgres instead (R-13), set `WARREN_DB_URL=postgres://user:pw@host/db` in `.env`; pg migrations apply on first start, and the SQLite path is bypassed entirely.
 
-### 10.2 Fly.io
-
-```bash
-fly launch                          # uses ./fly.toml
-fly volumes create warren_data --size 50 --region sjc
-BURROW_TOKEN=$(openssl rand -hex 32)
-fly secrets set \
-    WARREN_API_TOKEN=$(openssl rand -hex 32) \
-    BURROW_API_TOKEN=$BURROW_TOKEN \
-    WARREN_BURROW_TOKEN=$BURROW_TOKEN \
-    ANTHROPIC_API_KEY=... \
-    GITHUB_TOKEN=...
-# Optional: layer a custom canopy library on top of the built-ins:
-#   CANOPY_REPO_URL=https://github.com/<you>/agents.git
-# Optional: attach to a managed Postgres instead of the on-volume SQLite
-# (R-13). Without this, warren falls back to sqlite:///data/warren.db.
-#   fly secrets set WARREN_DB_URL=postgres://user:pw@host/db
-fly deploy
-```
-
 `BURROW_API_TOKEN` (read by `burrow serve`) and `WARREN_BURROW_TOKEN` (read by warren's burrow-client) are the two ends of one channel and **must hold the same value** — the supervisor validates equality at boot (warren-d317) and refuses to spawn burrow + warren if either is missing or they disagree, instead of letting `burrow serve` crash-loop with `[validation_error]` and warren 401 on every dispatch. `WARREN_API_TOKEN` is the browser-facing bearer; rotate the three independently. For loopback-dev only, set `WARREN_BURROW_NO_AUTH=1` to skip burrow auth (and the validation).
 
-Same image, same volume layout, same security flags. Mac Pro and Fly.io are interchangeable hosts. The storage backend (SQLite-on-volume vs. external Postgres) is a `WARREN_DB_URL` flip — the rest of the deploy is unchanged.
+### 10.2 Kubernetes (GKE Autopilot, hosted target)
+
+The `k8s` runtime (`WARREN_RUNTIME=k8s`) runs the control plane as a Deployment and each agent run as its own pod — no burrow, no supervisor sidecar; the pod boundary is the sandbox. GKE Autopilot is the reference cluster.
+
+```bash
+deploy/docker/build-images.sh              # control-plane + agent + workspace-init
+kubectl apply -k deploy/k8s/overlays/gke   # GKE Autopilot (the hosted target)
+kubectl apply -k deploy/k8s/overlays/kind  # local kind / k3d dev
+```
+
+The canonical operator procedure — secrets + rotation, RBAC, garbage collection, admission caps, observability, incident playbooks — lives in [`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md); the manifest quick-start is `deploy/k8s/README.md`. Continuous deployment is `.github/workflows/deploy-gke.yml`: a published GitHub release builds the SHA-pinned images and rolls the cluster forward via Workload Identity Federation. The storage backend (SQLite-on-volume vs. external Postgres) is a `WARREN_DB_URL` flip — under `k8s`, back it with a managed Postgres so state survives pod reschedules.
 
 ### 10.3 Container layout
 
@@ -678,7 +668,7 @@ The entrypoint is the Bun supervisor (`src/supervisor/main.ts`), not warren dire
 - Waits for the socket file to appear (`fs.access` poll, 100 ms × 50 = 5s timeout) before spawning warren.
 - Spawns warren (`bun run src/server/main/index.ts`) as a child.
 - Forwards `SIGTERM` and `SIGINT` to both children, then waits for clean exit (5s grace) before forcing.
-- Restarts `burrow serve` if it exits non-zero, with an exponential backoff and a budget of 5 restarts in 60s; after exhaustion, the supervisor exits, the container restarts under Docker/Fly's restart policy.
+- Restarts `burrow serve` if it exits non-zero, with an exponential backoff and a budget of 5 restarts in 60s; after exhaustion, the supervisor exits, the container restarts under Docker's (or the orchestrator's) restart policy.
 - Crashes if warren exits non-zero (warren is the user-facing process; restart-by-orchestrator is preferred to mask warren bugs in-process).
 
 Rationale: zero non-Bun deps; signal handling and lifecycle are explicit in our code; warren restarts (the more frequent kind, e.g., on deploy) leave burrow's run loop and SQLite untouched.
@@ -718,15 +708,15 @@ The decided shape, expanded from prior open question #4:
 
 1. **OpenAPI spec for warren's own HTTP surface.** Same question burrow resolved by hand-authoring `src/server/openapi/spec.ts` and golden-locking it. Recommend the same pattern; defer decision until after `/runs` and `/agents` routes stabilize.
 2. **Concurrent runs per project.** Warren can dispatch many runs against the same project; each run gets its own burrow (provisioned per-run, destroyed on completion). Or do we share a long-lived burrow per project and queue runs serially inside it? Decision affects burrow lifecycle (provision-per-run vs. provision-per-project) and `runs.burrow_id` semantics. Lean toward provision-per-run for V1: simpler isolation, matches "task burrow" model from burrow's §4.1.
-3. **Reverse proxy assumption.** Spec assumes warren is fronted by Caddy/Fly edge for TLS. Should warren refuse to start if `WARREN_TRUST_PROXY != true` and the bind address is non-loopback? V1 default: warn loudly in `doctor`, do not refuse — home-server users may not have a proxy yet.
+3. **Reverse proxy assumption.** Spec assumes warren is fronted by Caddy / cluster ingress for TLS. Should warren refuse to start if `WARREN_TRUST_PROXY != true` and the bind address is non-loopback? V1 default: warn loudly in `doctor`, do not refuse — home-server users may not have a proxy yet.
 4. **`readyz` timing.** When does warren consider itself "ready"? Burrow socket reachable + canopy clone present + at least one agent successfully rendered? All three? Affects deploy-time orchestration.
 
 ### 11.D V1 security posture (known limitations)
 
 Documented, accepted for V1:
 
-- **Single bearer token.** No rotation, no expiry, no revocation. Loss of `WARREN_API_TOKEN` = full access. Mitigation: rotate by editing `.env` / `fly secrets set` and bouncing the container.
-- **Plaintext secrets in `.env`.** Standard for self-host; user is responsible for filesystem perms (`chmod 600 .env`). Fly.io's secret store is encrypted at rest.
+- **Single bearer token.** No rotation, no expiry, no revocation. Loss of `WARREN_API_TOKEN` = full access. Mitigation: rotate by editing `.env` / the cluster secret and bouncing the container.
+- **Plaintext secrets in `.env`.** Standard for self-host; user is responsible for filesystem perms (`chmod 600 .env`). On a cluster, a managed secret store (Kubernetes Secrets / cloud secret manager) is encrypted at rest.
 - **No HTTPS termination in warren.** TLS is the reverse proxy's job. Direct HTTP on a non-loopback address is a misconfiguration; `warren doctor` warns.
 - **Trust-the-socket between warren and burrow.** Burrow's unix socket has no auth; the in-container threat model is "warren is the only client." If a third party gains code execution inside the warren process, they have full burrow access. Acceptable: warren and burrow are co-tenanted by design.
 - **No CSRF protection on the UI.** UI calls warren's API with the bearer token. Not exposed to third-party origins (CORS strict). Single-user posture.
@@ -1376,7 +1366,7 @@ loopback port would manifest as "preview works for some runs, not
 others."
 
 **TLS termination stays operator-side.** Per SPEC §8.1 / §11.D, TLS is
-the operator's Caddy / Fly edge. Warren ships docs for the wildcard
+the operator's Caddy / cluster ingress. Warren ships docs for the wildcard
 `*.<warren-host>` CNAME + DNS-01 wildcard cert with a Caddy snippet,
 not built-in cert provisioning. The DEPLOY guide is honest about the
 operator burden (DNS provider must be on Caddy's DNS-01 list; some are
@@ -1449,8 +1439,8 @@ shape.
 The original §11.L lock above describes subdomain-mode routing
 (`Host: run-<id>.<warren-host>`). That mode requires the operator to own
 a domain, configure a wildcard CNAME, and provision a wildcard TLS cert
-via DNS-01 — a closed door for the common self-hoster who just
-`fly deploy`s warren. A second mode, **path mode**, reuses the single
+via DNS-01 — a closed door for the common self-hoster running a single-box
+deploy. A second mode, **path mode**, reuses the single
 hostname + cert that already serves the warren UI and adds zero
 DNS/cert work. Path mode is the **default** from this addendum onward;
 subdomain mode stays as the explicit opt-in for multi-tenant operators.

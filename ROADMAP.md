@@ -1,6 +1,6 @@
 # Warren Roadmap
 
-Direction for warren as it grows from "single-user end-to-end works on Fly" to a
+Direction for warren as it grows from "single-user end-to-end works" to a
 self-hosted control plane that an engineering organization of 50+ ICs can adopt
 on their own infrastructure. Each item is a self-contained idea with a stable
 ID for reference. Items can be sequenced independently; the dependency graph is
@@ -545,7 +545,7 @@ exercise it.
 
 1. **Default-role toggle.** `WARREN_DEFAULT_AGENT` env var picks the default
    role for the new-run form. Public default unset → `claude-code`. The
-   project maintainer's Fly deploy sets it to `sapling`. Zero source change.
+   project maintainer's deploy sets it to `sapling`. Zero source change.
 
 2. **Sapling-specific RunDetail panel.** When the run's agent is sapling:
    - **Context Health meter** sourced from `turn_end.contextUtilization`
