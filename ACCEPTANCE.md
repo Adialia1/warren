@@ -5,7 +5,7 @@ This is the operator's checklist for verifying a warren cut against the
 pushing a release.
 
 The contract is split across **automated** (the harness in
-`scripts/acceptance/`) and **manual** gates (real claude-code run, fly
+`scripts/acceptance/`) and **manual** gates (real claude-code run, GKE
 deploy, UI smoke). Run the automated suite on every change; run the
 manual gates before a tag.
 
@@ -135,8 +135,9 @@ harness-side kills.
 `cap_add: SYS_ADMIN` is partial under Docker Desktop's VM. Boot smoke
 (scenario 13) holds; dispatching a real run with bwrap nesting is
 Linux-only territory and is not asserted here. For nested-bwrap
-verification, run `acceptance:container` on a Linux host or treat the
-fly deploy gate (below) as the bwrap-nesting check.
+verification, run `acceptance:container` on a Linux host. (Under the
+`k8s` runtime there is no bwrap at all — the pod boundary is the
+sandbox — so nested-bwrap only applies to the `local` topology.)
 
 **`--keep-tmp` in container mode** leaves the compose stack running
 after the harness exits. Tear it down with the printed command:
@@ -189,48 +190,38 @@ true` does NOT prove the agent committed — it can fire on an
 empty-push, surfaced by the `reap.empty_push` event when
 `commitsAhead: 0`).
 
-## Manual gate — Fly deploy
+## Manual gate — GKE deploy
 
-Verifies the §10.2 deploy shape on a real Firecracker VM (the only
-runtime where bwrap nests without any of the docker-compose flags).
-This is the fly.io equivalent of "did the canonical home-server deploy
-just work."
+Verifies the §10.2 deploy shape on the hosted target: the `k8s` runtime
+on GKE Autopilot, where each run is its own pod and there is no burrow.
+This is the cluster equivalent of "did the canonical home-server deploy
+just work." The canonical procedure is [`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md);
+the pipeline that performs it is `.github/workflows/deploy-gke.yml`.
 
 ```bash
-# First-time setup (already in fly.toml's header comment):
-fly launch                                       # reads fly.toml
-fly volumes create warren_data --size 50 --region sjc
-BURROW_TOKEN=$(openssl rand -hex 32)
-fly secrets set \
-    WARREN_API_TOKEN=$(openssl rand -hex 32) \
-    BURROW_API_TOKEN=$BURROW_TOKEN \
-    WARREN_BURROW_TOKEN=$BURROW_TOKEN \
-    CANOPY_REPO_URL=https://github.com/<you>/agents.git \
-    ANTHROPIC_API_KEY=... \
-    GITHUB_TOKEN=...
-
-# Each release:
-fly deploy                                       # bumps the Machine
-fly logs                                         # watch supervisor + warren + burrow boot
-curl -fsS https://<app>.fly.dev/healthz          # 200 expected
-curl -fsS https://<app>.fly.dev/readyz \
-    -H "Authorization: Bearer $WARREN_API_TOKEN"  # 200 expected
+# Roll the cluster forward (a published GitHub release does this
+# automatically; a manual dispatch of deploy-gke.yml with `deploy: true`
+# is the on-demand path). Then check the control plane came up:
+kubectl -n warren rollout status deploy/warren --timeout=300s
+INGRESS=https://<your-ingress-host>
+curl -fsS "$INGRESS/healthz"                       # 200 expected
+curl -fsS "$INGRESS/readyz" \
+    -H "Authorization: Bearer $WARREN_API_TOKEN"    # 200 expected
 ```
 
 **Pass criteria.**
-- `fly deploy` completes without health-check timeouts.
-- `/healthz` returns 200, `/readyz` returns 200 with all probes ok.
-- `fly logs` show:
-  - supervisor's `installGitCredentials()` boot-time line (mx-4d7d5d);
-  - burrow socket bound;
-  - warren `/healthz responding`.
-- A real claude-code run (per the `--real` gate above) completes end-to-end.
+- `kubectl rollout status` reports the Deployment available before the timeout.
+- `/healthz` returns 200, `/readyz` returns 200 with all probes ok
+  (the `k8s` runtime drops the burrow/bwrap probes — warren-c128).
+- `kubectl -n warren logs deploy/warren` shows warren `/healthz responding`
+  and the K8sProvider selecting the `k8s` runtime at boot.
+- A real claude-code run (per the `--real` gate above) completes
+  end-to-end — the run pod schedules, works, and reaps with a pushed branch.
 
-The four `bwrap`-required flags (`apparmor=unconfined`,
-`seccomp=unconfined`, `systempaths=unconfined`, `cap_add=SYS_ADMIN`)
-are NOT in fly.toml — Fly Machines are Firecracker VMs, not containers,
-and bwrap nests on a stock Machine kernel. See `fly.toml` line 88+ for
-the rationale and `burrow/DEPLOY.md` for the upstream recipe.
+Under `k8s` there is no burrow and none of the four bwrap flags
+(`apparmor`/`seccomp`/`systempaths`/`SYS_ADMIN`) apply — the pod
+boundary is the sandbox and kubelet enforces per-run CPU/memory. See
+[`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md) for the cluster topology.
 
 ## Manual gate — UI smoke
 

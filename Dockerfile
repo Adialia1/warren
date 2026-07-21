@@ -13,8 +13,9 @@
 #
 # The four `bwrap` security flags (apparmor=unconfined, seccomp=unconfined,
 # systempaths=unconfined, cap_add=SYS_ADMIN) are applied by the orchestrator
-# (docker-compose.yml or fly.toml), not the image. See SPEC §5.3 + §11.A
-# and burrow's DEPLOY.md for the rationale.
+# (docker-compose.yml in the `local` topology), not the image. Under the
+# `k8s` runtime there is no bwrap — the pod boundary is the sandbox. See
+# SPEC §5.3 + §11.A and burrow's DEPLOY.md for the rationale.
 
 # ---------- stage 1: build the UI ----------
 FROM oven/bun:1.2 AS ui-builder

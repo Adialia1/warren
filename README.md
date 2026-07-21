@@ -26,11 +26,11 @@ A fresh install needs nothing but a GitHub URL and a prompt. The built-in `claud
 
 ## Who this is for
 
-Engineering teams self-hosting their own agent infrastructure. The deployment unit is one team or one org running one warren on their own box, their own Fly account, or their own cluster. Run it for yourself on a home server today; the [org-readiness roadmap](ROADMAP.md) extends the same architecture to a 50+ engineer organization without forcing a fork.
+Engineering teams self-hosting their own agent infrastructure. The deployment unit is one team or one org running one warren on their own box or their own cluster. Run it for yourself on a home server today; the [org-readiness roadmap](ROADMAP.md) extends the same architecture to a 50+ engineer organization without forcing a fork.
 
 ## Status
 
-Stable (`0.9.10`), running on Fly.io in continuous use against real GitHub repos, with the Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) now a supported scale-out target on GKE. The end-to-end path is covered by 38 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/): manual runs, cron triggers, K8s pod dispatch (OOM fast-fail, steer delivery), Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, seeds-extensions roundtrip, serial plan-run dispatch, plan-run + Plot composition, Plot-workbench loop. The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
+Stable (`0.9.10`), running on GKE in continuous use against real GitHub repos, with the Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) as the supported hosted target on GKE Autopilot. The end-to-end path is covered by 38 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/): manual runs, cron triggers, K8s pod dispatch (OOM fast-fail, steer delivery), Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, seeds-extensions roundtrip, serial plan-run dispatch, plan-run + Plot composition, Plot-workbench loop. The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
 
 ## What you get
 
@@ -69,65 +69,26 @@ The compose file applies the four bwrap-required security flags (`apparmor=uncon
 
 > **Image requirement (self-host / `local` runtime): burrow-cli ≥ 0.3.12.** In the default topology warren is co-tenanted with [burrow](https://github.com/jayminwest/burrow) inside the container and talks to it over a shared unix socket. The published image pins `@os-eco/burrow-cli@0.3.12` (see [`Dockerfile`](Dockerfile)); if you build your own image or override the runtime, install burrow-cli **0.3.12 or newer** — earlier releases predate the runtime contract warren depends on (agent spawn shape, resume support, event kinds) and will fail at dispatch. Under `WARREN_RUNTIME=k8s` this does not apply — the run pods carry their own toolchain image and no burrow is installed.
 
-## Deploy to Fly.io
+## Deploy
 
-Same image, same volume layout, same security flags:
+Two supported paths:
 
-```bash
-fly launch                                    # uses ./fly.toml
-fly volumes create warren_data --size 50 --region sjc
-fly secrets set \
-    WARREN_API_TOKEN=... \
-    BURROW_API_TOKEN=... \
-    WARREN_BURROW_TOKEN=... \
-    ANTHROPIC_API_KEY=... \
-    GITHUB_TOKEN=...
-# Optional: attach a managed Postgres instead of the on-volume SQLite.
-# Without this, warren falls back to sqlite:///data/warren.db.
-#   fly secrets set WARREN_DB_URL=postgres://user:pw@host/db
-fly deploy
-```
+- **Single box (`local` runtime).** The [Quickstart](#quickstart-home-server) above *is* a complete deploy — one container, one volume, warren + burrow co-tenanted. Run it on a home server or any Docker host. Warren does not terminate TLS; front the container with Caddy (home server) or your ingress if you need HTTPS.
+- **Cluster (`k8s` runtime), the hosted target.** Deploy to Kubernetes — **GKE Autopilot is the reference cluster**. Each run is its own pod, there is no burrow, and admission caps shed load before the cluster thrashes. The canonical procedure is **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**; the manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md); see [Deploy to Kubernetes (scale-out)](#deploy-to-kubernetes-scale-out) below.
 
-### Continuous deployment from GitHub Actions
-
-Once warren is live on Fly, wiring tag-driven auto-deploy is two commands:
-
-```bash
-fly tokens create deploy -a <your-warren-app> --name "github-actions" --expiry 8760h \
-  | gh secret set FLY_API_TOKEN -R <your-org>/<your-fork>
-```
-
-Then add a `deploy` job to your release workflow that runs after release/tag:
-
-```yaml
-deploy:
-  needs: release
-  if: needs.release.outputs.release == 'true'
-  runs-on: ubuntu-latest
-  concurrency:
-    group: fly-deploy-<your-warren-app>
-    cancel-in-progress: false
-  steps:
-    - uses: actions/checkout@v6
-    - uses: superfly/flyctl-actions/setup-flyctl@master
-    - env: { FLY_API_TOKEN: "${{ secrets.FLY_API_TOKEN }}" }
-      run: flyctl deploy --remote-only --app <your-warren-app>
-```
-
-The deploy-scoped token is bound to a single app and cannot list secrets, ssh, or touch other apps, so it's safe to live in CI. See `.github/workflows/release.yml` for the reference shape used by `warren-deployed.fly.dev`.
+Continuous deployment ships in [`.github/workflows/deploy-gke.yml`](.github/workflows/deploy-gke.yml): a published GitHub release (cut by [`release.yml`](.github/workflows/release.yml)) builds the three SHA-pinned images and rolls the GKE Autopilot deployment forward. Auth is GCP Workload Identity Federation — no long-lived keys; the OIDC provider, service account, and cluster coordinates are repo secrets/variables (see [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) §1.6).
 
 ### Observability on a live deploy
 
-Warren ships enough operator-visible surface for a single-box / single-Fly-app deploy to be inspectable without bolting on extra infrastructure. The pieces:
+Warren ships enough operator-visible surface to be inspectable without bolting on extra infrastructure. The pieces:
 
-- **Health & readiness probes.** `GET /healthz` is a cheap liveness check (returns `{ok: true}`, auth-exempt — point Fly's `[[services.http_checks]]` or any uptime monitor at it). `GET /readyz` runs deeper diagnostics (DB reachable, bwrap usable, canopy clone fresh when `CANOPY_REPO_URL` is set) and returns a `DiagnosticCheck[]` payload — use it for deploy gating, not for hot-path liveness. `GET /version` returns `{version}` straight from `src/index.ts` so you can confirm a rollout actually swapped the image.
-- **Structured JSON logs.** The server emits one [pino](https://getpino.io) JSON line per event on stdout (name `warren`, level controlled by `WARREN_LOG_LEVEL`, default `info`). On Fly that means everything is queryable with `fly logs -a <your-warren-app>` and via the **Logs** tab on the Fly dashboard (`https://fly.io/apps/<your-warren-app>/monitoring`). Pipe through `| jq` locally for ad-hoc filtering; ship to an external store with a [pino transport](https://getpino.io/#/docs/transports) if you need retention beyond Fly's window.
-- **Correlation IDs.** Every HTTP response carries an `X-Request-ID` header (`src/server/request-id.ts`, warren-30af). Warren honours a well-formed inbound `X-Request-ID` and otherwise mints one; the same id is bound into the per-request pino child logger, so grepping `fly logs | jq 'select(.req_id == "…")'` reconstructs the full server-side trace for one client call. Forward the header from any reverse proxy in front of warren to keep the chain unbroken.
+- **Health & readiness probes.** `GET /healthz` is a cheap liveness check (returns `{ok: true}`, auth-exempt — point an uptime monitor or the cluster's liveness probe at it). `GET /readyz` runs deeper diagnostics (DB reachable, bwrap usable under `local`, canopy clone fresh when `CANOPY_REPO_URL` is set) and returns a `DiagnosticCheck[]` payload — use it for deploy gating and the cluster's readiness probe, not for hot-path liveness. `GET /version` returns `{version}` straight from `src/index.ts` so you can confirm a rollout actually swapped the image.
+- **Structured JSON logs.** The server emits one [pino](https://getpino.io) JSON line per event on stdout (name `warren`, level controlled by `WARREN_LOG_LEVEL`, default `info`). Stream them with `docker compose logs -f warren` on a single box or `kubectl -n warren logs deploy/warren` on a cluster. Pipe through `| jq` for ad-hoc filtering; ship to an external store with a [pino transport](https://getpino.io/#/docs/transports) if you need retention beyond your log driver's window.
+- **Correlation IDs.** Every HTTP response carries an `X-Request-ID` header (`src/server/request-id.ts`, warren-30af). Warren honours a well-formed inbound `X-Request-ID` and otherwise mints one; the same id is bound into the per-request pino child logger, so grepping the logs with `jq 'select(.req_id == "…")'` reconstructs the full server-side trace for one client call. Forward the header from any reverse proxy in front of warren to keep the chain unbroken.
 - **Per-run cost & token usage.** `runs.cost_usd` and `runs.tokens_*` columns are populated for the `pi` and `claude-code` built-ins (SPEC §11.K); the UI run-detail page surfaces them and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). This is reporting, not enforcement — budget caps are deferred to R-17.
-- **Fly dashboards.** The **Metrics** tab on the Fly app dashboard graphs CPU, RAM, and per-volume IO out of the box; pair it with the **Logs** tab above for incident triage. `fly status -a <your-warren-app>` and `fly vm status` print machine + volume state from the CLI. `fly ssh console -a <your-warren-app>` drops you into the running container if you need to inspect `/data/warren.db` directly (sqlite default) or tail the canopy clone under `WARREN_CANOPY_DIR`.
 - **Pre-flight checks.** Run `warren doctor` (`src/cli/commands/doctor.ts`) against a deployed instance to surface common misconfigurations — empty/placeholder bearer tokens, unbalanced preview markers, missing `WARREN_PREVIEW_HOST` when previews are wired, etc. Cheaper than reading the logs after a failed run.
 
-There is no built-in Prometheus / OpenTelemetry exporter for the `local` runtime in V1. If you need one there, the request-id + pino combination is the seam to extend; the route table (`ROUTE_TABLE` in `src/server/handlers.ts`, documented in [`docs/http-api.md`](docs/http-api.md)) is the stable surface to instrument against. (The `k8s` runtime *does* ship pod-lifecycle Prometheus metrics on `/metrics` — see the runbook.)
+There is no built-in Prometheus / OpenTelemetry exporter for the `local` runtime in V1. If you need one there, the request-id + pino combination is the seam to extend; the route table (`ROUTE_TABLE` in `src/server/handlers.ts`, documented in [`docs/http-api.md`](docs/http-api.md)) is the stable surface to instrument against. The `k8s` runtime *does* ship pod-lifecycle Prometheus metrics on `/metrics` — see the runbook.
 
 ## Deploy to Kubernetes (scale-out)
 
@@ -150,10 +111,10 @@ Warren bundles a small set of [os-eco](https://github.com/jayminwest/os-eco) too
 
 ### Custom agents: bring your own prompt library
 
-The built-in `claude-code`, `sapling`, and `pi` agents cover the common case. To define custom agents as versioned prompts (with inheritance, mixins, and per-agent sandbox config), point warren at a [canopy](https://github.com/jayminwest/canopy) repo:
+The built-in `claude-code`, `sapling`, and `pi` agents cover the common case. To define custom agents as versioned prompts (with inheritance, mixins, and per-agent sandbox config), point warren at a [canopy](https://github.com/jayminwest/canopy) repo by setting `CANOPY_REPO_URL` in the environment (`.env`, compose, or a cluster secret):
 
 ```bash
-fly secrets set CANOPY_REPO_URL=https://github.com/<you>/agents.git
+CANOPY_REPO_URL=https://github.com/<you>/agents.git
 ```
 
 Library agents override built-ins by name. See [SPEC §4.2](SPEC.md#42-the-bundle-expressed-in-canopy) for the agent-as-prompt schema.
@@ -319,7 +280,7 @@ GET    /healthz                      liveness (no auth)
 GET    /readyz                       runtime + first-render check
 ```
 
-`Authorization: Bearer ${WARREN_API_TOKEN}` is required on every non-`/healthz` route. Warren does not terminate TLS; front it with Caddy on a home server, or rely on Fly's edge.
+`Authorization: Bearer ${WARREN_API_TOKEN}` is required on every non-`/healthz` route. Warren does not terminate TLS; front it with Caddy on a home server, or your cluster's ingress.
 
 ## Development
 
@@ -464,7 +425,7 @@ The full type surface (all inputs, outputs, row shapes, enums) is in `src/client
 
 How the current release is scoped. Full details in [SPEC §11.D](SPEC.md#11d-v1-security-posture-known-limitations):
 
-- **Single bearer token.** Rotation, expiry, and scopes are not supported; rotate by editing `.env` (or `fly secrets set`) and bouncing the container. Per-user identity is on the roadmap (R-09).
+- **Single bearer token.** Rotation, expiry, and scopes are not supported; rotate by editing `.env` (or the cluster secret) and bouncing the container. Per-user identity is on the roadmap (R-09).
 - **TLS is upstream's job.** Direct HTTP on a non-loopback bind is a misconfiguration; `warren doctor` warns.
 - **Trust-the-socket** between warren and the runtime inside the container, which are co-tenanted by design.
 - **No CSRF, single-user.** UI calls warren's API with the bearer; CORS is strict.

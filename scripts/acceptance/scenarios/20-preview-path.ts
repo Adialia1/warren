@@ -124,7 +124,7 @@ async function runPathHappyPath(ctx: ScenarioCtx): Promise<void> {
 				WARREN_STUB_SLEEP_MS: "0",
 				// Path mode: WARREN_PREVIEW_HOST deliberately unset. The
 				// fresh-install promise is that the operator needs nothing
-				// beyond `fly deploy` + a warren API token.
+				// beyond a single-box deploy + a warren API token.
 				WARREN_PREVIEW_MODE: "path",
 				WARREN_PREVIEW_IDLE_TTL: "30m",
 				WARREN_PREVIEW_MAX_LIFETIME: "8h",

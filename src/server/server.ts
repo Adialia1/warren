@@ -1,7 +1,7 @@
 /**
  * `Bun.serve` wrapper. Owns the request → auth → router → handler →
  * response pipeline plus the lifecycle (start/stop). Two transport
- * modes: TCP (canonical V1 deploy, fronted by Caddy/Fly edge) and
+ * modes: TCP (canonical V1 deploy, fronted by Caddy / cluster ingress) and
  * unix socket (forward-compat for any future "warren next to a
  * reverse proxy on the same box" topology). Auth is an opaque
  * `AuthProvider` the caller injects; the dispatch layer never inspects

@@ -91,7 +91,7 @@ export interface Route {
 
 /**
  * Wire-level binding for `warren serve`. TCP is the canonical V1 deploy
- * (warren is fronted by Caddy/Fly edge for TLS — see SPEC §11.D); the
+ * (warren is fronted by Caddy / cluster ingress for TLS — see SPEC §11.D); the
  * unix socket option is kept for any future "warren next to a reverse
  * proxy on the same box without a port" deploy. Defaults to ephemeral
  * loopback TCP for tests.
