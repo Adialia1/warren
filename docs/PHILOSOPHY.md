@@ -170,7 +170,9 @@ Standing order of work, each step paid for by a roadmap item
    plot hooks leave with plot). Includes pulling the plot merge out of
    `RuntimeProvider.finalize()` and deleting the twelve plot injector
    fields — `ServerDeps` shrinks by ~15 fields in one stroke.
-3. **Tier-1 event bus** on `RunEventBroker`, proven by moving healer
+3. **Tier-1 event bus** (pl-3a79 steps 16–18,
+   warren-bb60/warren-4e74/warren-df3e) on `RunEventBroker`, proven by
+   moving healer
    onto it and evicting the mulch/seeds mirrors from `finalize()` —
    the finalize contract stops enumerating features.
 4. **`Forge` + `AuthProvider` contracts**, both paid for by the GitHub
