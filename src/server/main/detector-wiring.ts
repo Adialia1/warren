@@ -139,6 +139,9 @@ export function bootConversationMergePollerFromEnv(
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,
 		projectSpawn: input.projectSpawn,
+		// Raw token for the pre-dispatch refresh fetch (private repos on
+		// the K8s control plane) — see SpawnRunInput.githubToken.
+		githubToken: env.GITHUB_TOKEN,
 		seedsCli: input.seedsCli,
 		...(input.runBranchPrefixDefault !== undefined
 			? { runBranchPrefixDefault: input.runBranchPrefixDefault }

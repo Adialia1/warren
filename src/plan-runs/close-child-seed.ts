@@ -30,6 +30,7 @@ import {
 } from "../bot-identity.ts";
 import type { SpawnFn } from "../projects/index.ts";
 import { closeSeed, type SeedsCliDeps } from "../seeds-cli/index.ts";
+import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
 
 export interface CloseMergedChildSeedInput {
 	/** Project clone whose origin carries the seed queue (coordination project). */
@@ -42,6 +43,13 @@ export interface CloseMergedChildSeedInput {
 	/** git spawn seam (same shape used across projects/plots). */
 	readonly spawn: SpawnFn;
 	readonly gitBinary: string;
+	/**
+	 * Raw `GITHUB_TOKEN` for the fetch + push against a private origin,
+	 * applied per-spawn via `githubCredentialGitEnv` (needed on the K8s
+	 * control plane, where no supervisor-installed global insteadOf rule
+	 * exists). Absent/empty → anonymous git, the old behavior.
+	 */
+	readonly githubToken?: string;
 }
 
 export type CloseMergedChildSeedResult =
@@ -103,9 +111,11 @@ export async function closeMergedChildSeed(
 	input: CloseMergedChildSeedInput,
 ): Promise<CloseMergedChildSeedResult> {
 	const scrub = gitRepoContextScrubEnv();
+	// Credential env for the network-touching calls only (fetch + push).
+	const cred = githubCredentialGitEnv(input.githubToken);
 
 	// Best-effort fetch so the worktree reflects the just-merged default branch.
-	await runGit(input, ["fetch", "--prune", "origin"], input.projectPath, scrub);
+	await runGit(input, ["fetch", "--prune", "origin"], input.projectPath, { ...scrub, ...cred });
 
 	const bytes = new Uint8Array(4);
 	crypto.getRandomValues(bytes);
@@ -155,7 +165,7 @@ export async function closeMergedChildSeed(
 			input,
 			["push", "origin", `HEAD:${input.defaultBranch}`],
 			worktreePath,
-			scrub,
+			{ ...scrub, ...cred },
 		);
 		if (push.exitCode !== 0) {
 			throw new Error(`git push failed (exit ${push.exitCode}): ${push.stderr}`);

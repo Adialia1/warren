@@ -93,6 +93,53 @@ describe("refreshProjectClone", () => {
 		expect(resetCalls.map((c) => c.cmd[3])).toEqual(["origin/v1.2.3", "v1.2.3"]);
 	});
 
+	test("token → the fetch spawn carries the credential env; local git ops stay clean", async () => {
+		const sha = "2222222222222222222222222222222222222222";
+		const seen: { cmd: readonly string[]; env?: Record<string, string | undefined> }[] = [];
+		const spawn: SpawnFn = async (cmd, opts) => {
+			seen.push({ cmd, ...(opts.env !== undefined ? { env: opts.env } : {}) });
+			if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+			return ok();
+		};
+		await refreshProjectClone({
+			config: CFG,
+			localPath: "/data/projects/x/y",
+			ref: "main",
+			token: "ghp_secret",
+			spawn,
+			exists: () => true,
+		});
+
+		const fetch = seen.find((c) => c.cmd[1] === "fetch");
+		expect(fetch?.env).toEqual({
+			GIT_CONFIG_COUNT: "1",
+			GIT_CONFIG_KEY_0: "url.https://x-access-token:ghp_secret@github.com/.insteadOf",
+			GIT_CONFIG_VALUE_0: "https://github.com/",
+		});
+		// checkout / reset / config / rev-parse are local — no env override.
+		expect(seen.filter((c) => c.cmd[1] !== "fetch").every((c) => c.env === undefined)).toBe(true);
+		// Token never rides in argv.
+		expect(seen.flatMap((c) => c.cmd).join(" ")).not.toContain("ghp_secret");
+	});
+
+	test("no token → the fetch spawn receives no env override", async () => {
+		const sha = "3333333333333333333333333333333333333333";
+		const seen: { cmd: readonly string[]; env?: Record<string, string | undefined> }[] = [];
+		const spawn: SpawnFn = async (cmd, opts) => {
+			seen.push({ cmd, ...(opts.env !== undefined ? { env: opts.env } : {}) });
+			if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+			return ok();
+		};
+		await refreshProjectClone({
+			config: CFG,
+			localPath: "/data/projects/x/y",
+			ref: "main",
+			spawn,
+			exists: () => true,
+		});
+		expect(seen.find((c) => c.cmd[1] === "fetch")?.env).toBeUndefined();
+	});
+
 	test("throws ProjectUnavailableError when localPath does not exist", async () => {
 		const { spawn } = recorder(() => ok());
 		await expect(

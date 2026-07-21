@@ -40,6 +40,8 @@ export interface CreateMergePollerDispatchInput {
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
 	readonly projectSpawn: SpawnFn;
+	/** Raw `GITHUB_TOKEN` for the pre-dispatch refresh fetch — see `SpawnRunInput.githubToken`. */
+	readonly githubToken?: string;
 	readonly seedsCli: SeedsCliDeps;
 	readonly runBranchPrefixDefault?: string;
 	readonly now?: () => Date;
@@ -65,6 +67,7 @@ export function createMergePollerDispatch(
 			metadata: { conversationId },
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
+			githubToken: input.githubToken,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: input.seedsCli,
 			...(input.runBranchPrefixDefault !== undefined

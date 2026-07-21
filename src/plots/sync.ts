@@ -10,6 +10,7 @@ import type { SpawnFn } from "../projects/index.ts";
 import { parseGitHubUrl } from "../projects/url.ts";
 import { mergePullRequest, openPullRequest, parsePullRequestRef } from "../runs/pr.ts";
 import type { PlotSyncConfig } from "../warren-config/index.ts";
+import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
 
 export interface PlotSyncRequest {
 	readonly projectPath: string;
@@ -100,6 +101,13 @@ export const defaultPlotSyncer: PlotSyncer = {
 		// bot identity over the scrub (the two key families don't overlap).
 		const scrub = gitRepoContextScrubEnv();
 
+		// Credential env for the network-touching git calls (fetch + push):
+		// the same insteadOf rewrite the supervisor installs globally on the
+		// local topology, scoped to the one child process so a bare
+		// `warren serve` (K8s control plane, no supervisor) can sync private
+		// repos. Empty when no token — anonymous behavior unchanged.
+		const cred = githubCredentialGitEnv(token);
+
 		// 1. Detect if .plot/ files are dirty
 		const statusRes = await trySpawn(spawn, [gitBinary, "status", "--porcelain", "--", ".plot/"], {
 			cwd: projectPath,
@@ -119,7 +127,7 @@ export const defaultPlotSyncer: PlotSyncer = {
 		// 3. Fetch from origin to be up to date
 		const fetchRes = await trySpawn(spawn, [gitBinary, "fetch", "--prune", "origin"], {
 			cwd: projectPath,
-			env: scrub,
+			env: { ...scrub, ...cred },
 		});
 		if (fetchRes.exitCode !== 0) {
 			// Best-effort in offline/test mode: warn but don't hard crash if it's local branch only
@@ -194,7 +202,7 @@ export const defaultPlotSyncer: PlotSyncer = {
 
 			const pushRes = await trySpawn(spawn, [gitBinary, "push", "origin", branchName], {
 				cwd: worktreePath,
-				env: scrub,
+				env: { ...scrub, ...cred },
 			});
 			if (pushRes.exitCode !== 0) {
 				throw new Error(

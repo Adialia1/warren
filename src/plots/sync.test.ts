@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gitRepoContextScrubEnv, warrenCommitIdentityEnv } from "../bot-identity.ts";
+import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
 import { defaultPlotSyncer } from "./sync.ts";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -130,9 +131,14 @@ describe("defaultPlotSyncer.sync", () => {
 			// present-and-undefined) so a leaked GIT_DIR can't divert the commit.
 			expect(commitEnvs).toEqual([{ ...gitRepoContextScrubEnv(), ...warrenCommitIdentityEnv() }]);
 			// warren-23dd: the non-commit git calls in the same flow carry the
-			// scrub alone (status / push shown here as representatives).
+			// scrub alone (status shown here as representative)…
 			expect(statusEnvs).toEqual([gitRepoContextScrubEnv()]);
-			expect(pushEnvs).toEqual([gitRepoContextScrubEnv()]);
+			// …except the network-touching push, which additionally carries the
+			// process-scoped credential rewrite so a bare `warren serve` (K8s,
+			// no supervisor insteadOf rule) can push to a private origin.
+			expect(pushEnvs).toEqual([
+				{ ...gitRepoContextScrubEnv(), ...githubCredentialGitEnv("ghp_test") },
+			]);
 
 			// Verify PR open and merge requests
 			expect(fetchCalls).toHaveLength(2);

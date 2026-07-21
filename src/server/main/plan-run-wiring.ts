@@ -119,7 +119,7 @@ function createReopenPr(
 
 type CloseChildSeedDeps = Pick<
 	PlanRunWiringInput,
-	"repos" | "projectsConfig" | "seedsCli" | "projectSpawn" | "logger"
+	"env" | "repos" | "projectsConfig" | "seedsCli" | "projectSpawn" | "logger"
 >;
 
 /**
@@ -130,7 +130,7 @@ type CloseChildSeedDeps = Pick<
  * the plan keeps advancing (mirrors the Plot auto-done hook's tolerance).
  */
 function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSeedFn {
-	const { repos, projectsConfig, seedsCli, projectSpawn, logger } = deps;
+	const { env, repos, projectsConfig, seedsCli, projectSpawn, logger } = deps;
 	return async ({ planRun, child }) => {
 		try {
 			const project = await repos.projects.get(planRun.projectId);
@@ -142,6 +142,9 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 				seedsCli,
 				spawn: projectSpawn,
 				gitBinary: projectsConfig.gitBinary,
+				// Raw token so the fetch/push work against private repos on
+				// the K8s control plane (no supervisor insteadOf rule there).
+				githubToken: env.GITHUB_TOKEN,
 			});
 			logger.info(
 				{ planRunId: planRun.id, seq: child.seq, seedId: child.seedId, outcome: result.kind },
@@ -209,6 +212,7 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 		resolveExecution: createResolveExecution(repos), // pl-fb43 step 5: per-child execution repo
 		// warren-3806: deterministic host-side seed close when a child merges.
 		closeChildSeed: createCloseChildSeed({
+			env,
 			repos,
 			projectsConfig,
 			seedsCli,
@@ -229,6 +233,9 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			warrenConfigs,
 			projectsConfig,
 			projectSpawn,
+			// Raw token for the pre-dispatch refresh fetch (private repos on
+			// the K8s control plane) — see SpawnRunInput.githubToken.
+			githubToken: env.GITHUB_TOKEN,
 			seedsCli,
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 			...(now !== undefined ? { now } : {}),

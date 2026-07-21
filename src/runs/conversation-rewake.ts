@@ -157,6 +157,7 @@ export type RewakeConversationInput = {
 	| "now"
 	| "projectsConfig"
 	| "projectSpawn"
+	| "githubToken"
 	| "ref"
 	| "refreshProjectFn"
 	| "warrenConfigs"
@@ -257,6 +258,7 @@ function buildRewakeSpawnInput(
 		...(input.now !== undefined ? { now: input.now } : {}),
 		...(input.projectsConfig !== undefined ? { projectsConfig: input.projectsConfig } : {}),
 		...(input.projectSpawn !== undefined ? { projectSpawn: input.projectSpawn } : {}),
+		...(input.githubToken !== undefined ? { githubToken: input.githubToken } : {}),
 		...(input.ref !== undefined ? { ref: input.ref } : {}),
 		...(input.refreshProjectFn !== undefined ? { refreshProjectFn: input.refreshProjectFn } : {}),
 		...(input.warrenConfigs !== undefined ? { warrenConfigs: input.warrenConfigs } : {}),

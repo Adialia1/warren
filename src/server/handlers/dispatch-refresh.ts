@@ -35,6 +35,8 @@ export async function refreshDispatchProject(
 		repo: deps.repos.projects,
 		config: deps.projectsConfig,
 		id: project.id,
+		// Private-repo credential for the host-side fetch (AutoOpenPrConfig.gitToken).
+		token: deps.autoOpenPr?.gitToken,
 		spawn: deps.spawn,
 		...(ref !== undefined ? { ref } : {}),
 		...(deps.now !== undefined ? { now: deps.now } : {}),

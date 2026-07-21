@@ -28,6 +28,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "./clone.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
@@ -85,6 +86,14 @@ export interface RefreshProjectCloneInput {
 	readonly localPath: string;
 	/** Branch, tag, or SHA. Defaults to the project's tracked default branch. */
 	readonly ref: string;
+	/**
+	 * GitHub token for private-repo access (`GITHUB_TOKEN` at the HTTP
+	 * boundary). Applied to the `git fetch` spawn as a process-scoped
+	 * `insteadOf` rewrite (`githubCredentialGitEnv`) so a bare `warren
+	 * serve` (K8s pod, no supervisor-installed global rule) can refresh a
+	 * private clone. Absent/empty → anonymous fetch, the old behavior.
+	 */
+	readonly token?: string;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	readonly exists?: (path: string) => boolean;
@@ -159,9 +168,14 @@ export async function refreshProjectClone(
 		});
 	}
 
+	// No token → no `env` key, plain inheritance (see CloneProjectInput.token).
+	const credEnv = githubCredentialGitEnv(input.token);
+	const netEnv = Object.keys(credEnv).length > 0 ? { env: credEnv } : {};
+
 	await runGit(spawn, [config.gitBinary, "fetch", "--prune", "origin"], {
 		cwd: localPath,
 		timeoutMs,
+		...netEnv,
 	});
 
 	// Probe `.plot/` BEFORE the working-tree-touching commands so the

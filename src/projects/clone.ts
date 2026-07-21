@@ -24,6 +24,7 @@ import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { formatError } from "../core/errors.ts";
+import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 
@@ -82,6 +83,16 @@ export interface CloneProjectInput {
 	readonly name: string;
 	/** Override default-branch detection. */
 	readonly defaultBranch?: string;
+	/**
+	 * GitHub token for private-repo access (`GITHUB_TOKEN` at the HTTP
+	 * boundary). Applied as a process-scoped `insteadOf` rewrite via
+	 * `githubCredentialGitEnv` on the network-touching git spawns (clone,
+	 * `remote set-head`) — never in argv, never persisted to the clone's
+	 * config. Absent/empty → anonymous clone, exactly the old behavior.
+	 * The supervisor's global rule covers the local topology; this covers
+	 * `warren serve` running bare (K8s pod), where no global rule exists.
+	 */
+	readonly token?: string;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	/** Filesystem probes — overrideable for tests. */
@@ -112,8 +123,13 @@ export async function cloneProjectRepo(input: CloneProjectInput): Promise<CloneP
 
 	await ensureParentDir(mkdirp, dirname(localPath));
 
+	// No token → no `env` key at all, so anonymous public-repo clones spawn
+	// exactly as before (plain inheritance, nothing for tests to see).
+	const credEnv = githubCredentialGitEnv(input.token);
+	const netEnv = Object.keys(credEnv).length > 0 ? { env: credEnv } : {};
+
 	const cloneCmd = [config.gitBinary, "clone", gitUrl, localPath];
-	const cloneResult = await trySpawn(spawn, cloneCmd, { cwd: config.root, timeoutMs });
+	const cloneResult = await trySpawn(spawn, cloneCmd, { cwd: config.root, timeoutMs, ...netEnv });
 	if (cloneResult.exitCode !== 0) {
 		// Best-effort cleanup: clone may have left a partial dir behind.
 		await rmrf(localPath).catch(() => undefined);
@@ -131,7 +147,13 @@ export async function cloneProjectRepo(input: CloneProjectInput): Promise<CloneP
 		defaultBranch = input.defaultBranch;
 	} else {
 		try {
-			defaultBranch = await detectDefaultBranch(spawn, config.gitBinary, localPath, timeoutMs);
+			defaultBranch = await detectDefaultBranch(
+				spawn,
+				config.gitBinary,
+				localPath,
+				timeoutMs,
+				netEnv,
+			);
 		} catch (err) {
 			await rmrf(localPath).catch(() => undefined);
 			throw err;
@@ -146,6 +168,7 @@ async function detectDefaultBranch(
 	gitBinary: string,
 	cwd: string,
 	timeoutMs: number,
+	netEnv: { readonly env?: Record<string, string> } = {},
 ): Promise<string> {
 	const result = await trySpawn(spawn, [gitBinary, "symbolic-ref", "refs/remotes/origin/HEAD"], {
 		cwd,
@@ -156,9 +179,11 @@ async function detectDefaultBranch(
 		if (branch !== undefined) return branch;
 	}
 	// Recover via remote set-head --auto + a second symbolic-ref read.
+	// `set-head --auto` queries the remote, so it carries the credential env.
 	const setHead = await trySpawn(spawn, [gitBinary, "remote", "set-head", "origin", "--auto"], {
 		cwd,
 		timeoutMs,
+		...netEnv,
 	});
 	if (setHead.exitCode !== 0) {
 		throw new ProjectUnavailableError(

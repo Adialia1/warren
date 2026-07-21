@@ -325,6 +325,18 @@ function buildContext(input: BuildPrContentInput): PrFragmentContext {
 export interface AutoOpenPrConfig {
 	readonly enabled: boolean;
 	readonly token: string;
+	/**
+	 * Raw `GITHUB_TOKEN` for host-side git network ops against private
+	 * repos (project clone, refresh fetch, plan-run seed-close push),
+	 * applied per-spawn via `githubCredentialGitEnv`. Deliberately
+	 * separate from `token`: the acceptance seam below synthesizes a
+	 * `stub-token` there, which must never become a real git credential.
+	 * Undefined/empty → anonymous git (public repos only). The
+	 * supervisor's global insteadOf rule makes this redundant on the
+	 * local topology; under `WARREN_RUNTIME=k8s` (bare `warren serve`,
+	 * no supervisor) it is the ONLY thing authenticating these ops.
+	 */
+	readonly gitToken?: string;
 	readonly warrenBaseUrl: string | null;
 }
 
@@ -351,6 +363,8 @@ export function loadAutoOpenPrConfigFromEnv(env: AutoOpenEnvLike = process.env):
 	return {
 		enabled,
 		token,
+		// Raw only — never the synthetic stub-token (see AutoOpenPrConfig.gitToken).
+		gitToken: env.GITHUB_TOKEN,
 		warrenBaseUrl: env.WARREN_BASE_URL ?? null,
 	};
 }

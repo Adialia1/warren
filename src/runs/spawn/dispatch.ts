@@ -136,6 +136,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 					config: input.projectsConfig,
 					id: project.id,
 					...(baseRef !== undefined ? { ref: baseRef } : {}),
+					token: input.githubToken,
 					spawn: input.projectSpawn,
 					...(input.now !== undefined ? { now: input.now } : {}),
 					...(input.warrenConfigs !== undefined ? { warrenConfigs: input.warrenConfigs } : {}),

@@ -70,6 +70,11 @@ export interface BootSchedulerInput {
 	 * `GITHUB_TOKEN` for the CI-fixer poller's check-runs fetch (warren-0b75).
 	 * Resolved from the same env the reap pr-open path reads. Defaults to the
 	 * empty string; the poller surfaces per-PR `error` results when unset.
+	 * Also forwarded onto every scheduled `spawnRun` as the pre-dispatch
+	 * refresh's git credential (`SpawnRunInput.githubToken`) so cron /
+	 * scheduled-for dispatches can fetch private repos on the K8s control
+	 * plane. The acceptance seam's synthetic `stub-token` is inert there:
+	 * the harness's own `insteadOf` rules are longer-prefix and win.
 	 */
 	readonly githubToken?: string;
 	/** Override the spawnRun seam (tests). Defaults to the live `spawnRun`. */
@@ -111,6 +116,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			...(args.maxCostUsd !== undefined ? { maxCostUsdOverride: args.maxCostUsd } : {}),
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
+			githubToken: input.githubToken,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
 			// warren-a0a2: forward the cron dispatcher's row-id probe so its
@@ -149,6 +155,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			targetBranch: args.targetBranch,
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
+			githubToken: input.githubToken,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
 			...(input.runBranchPrefixDefault !== undefined

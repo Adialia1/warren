@@ -52,6 +52,12 @@ export interface AddProjectInput {
 	readonly config: ProjectsConfig;
 	readonly gitUrl: string;
 	readonly defaultBranch?: string;
+	/**
+	 * GitHub token for private-repo clones (`GITHUB_TOKEN`), forwarded to
+	 * `cloneProjectRepo` — see `CloneProjectInput.token`. Absent/empty →
+	 * anonymous clone.
+	 */
+	readonly token?: string;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	readonly now?: () => Date;
@@ -83,6 +89,7 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 		owner: parsed.owner,
 		name: parsed.name,
 		defaultBranch: input.defaultBranch,
+		token: input.token,
 		spawn: input.spawn,
 		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
 	});
@@ -106,6 +113,11 @@ export interface RefreshProjectInput {
 	readonly id: string;
 	/** Branch, tag, or SHA. Defaults to the project row's tracked default_branch. */
 	readonly ref?: string;
+	/**
+	 * GitHub token for private-repo fetches (`GITHUB_TOKEN`), forwarded to
+	 * `refreshProjectClone` — see `RefreshProjectCloneInput.token`.
+	 */
+	readonly token?: string;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	readonly now?: () => Date;
@@ -165,6 +177,7 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 		config,
 		localPath: row.localPath,
 		ref,
+		token: input.token,
 		spawn: input.spawn,
 		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
 		armHooks,

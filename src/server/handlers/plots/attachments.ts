@@ -312,6 +312,8 @@ function scheduleRefreshAfterMerge(
 		repo: deps.repos.projects,
 		config: deps.projectsConfig,
 		id: projectId,
+		// Private-repo credential for the host-side fetch (AutoOpenPrConfig.gitToken).
+		token: deps.autoOpenPr?.gitToken,
 		spawn: deps.spawn ?? defaultSpawn,
 		...(deps.now !== undefined ? { now: deps.now } : {}),
 		...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),

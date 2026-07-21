@@ -143,6 +143,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			mode: "batch",
 			projectsConfig: deps.projectsConfig,
 			projectSpawn: deps.spawn ?? defaultSpawn,
+			githubToken: deps.autoOpenPr?.gitToken,
 			metadata: body.metadata as Record<string, unknown> | undefined,
 			now: deps.now,
 			ref,

@@ -176,6 +176,7 @@ async function dispatchHealer(
 		metadata: { healFingerprint: alert.fingerprint, alertSource: alert.source },
 		projectsConfig: deps.projectsConfig,
 		projectSpawn: deps.spawn ?? defaultSpawn,
+		githubToken: deps.autoOpenPr?.gitToken,
 		...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
 		...(deps.runBranchPrefixDefault !== undefined
 			? { runBranchPrefixDefault: deps.runBranchPrefixDefault }

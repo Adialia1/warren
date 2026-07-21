@@ -42,6 +42,8 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 			config: deps.projectsConfig,
 			gitUrl,
 			...(defaultBranch !== undefined ? { defaultBranch } : {}),
+			// Private-repo credential for the host-side clone (AutoOpenPrConfig.gitToken).
+			token: deps.autoOpenPr?.gitToken,
 			spawn: defaultSpawn,
 		});
 		return jsonResponse(201, project);
@@ -285,6 +287,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 			projectsConfig: deps.projectsConfig,
 			projectSpawn: deps.spawn ?? defaultSpawn,
+			githubToken: deps.autoOpenPr?.gitToken,
 			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
 			...(deps.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: deps.runBranchPrefixDefault }
@@ -340,6 +343,8 @@ export function refreshProjectHandler(deps: ServerDeps): RouteHandler {
 			config: deps.projectsConfig,
 			id,
 			...(ref !== undefined ? { ref } : {}),
+			// Private-repo credential for the host-side fetch (AutoOpenPrConfig.gitToken).
+			token: deps.autoOpenPr?.gitToken,
 			spawn: deps.spawn ?? defaultSpawn,
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),

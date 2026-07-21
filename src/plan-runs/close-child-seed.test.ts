@@ -90,6 +90,34 @@ describe("closeMergedChildSeed", () => {
 		expect(has("remove")).toBe(true);
 	});
 
+	test("githubToken → fetch + push carry the credential env; token stays out of argv", async () => {
+		const { spawn, calls } = makeGitSpawn({ dirtyAfterClose: true });
+		const { seedsCli } = makeSeedsCli();
+		await closeMergedChildSeed({
+			projectPath: "/data/projects/x/y",
+			defaultBranch: "main",
+			seedId: "warren-3f09",
+			seedsCli,
+			spawn,
+			gitBinary: "git",
+			githubToken: "ghp_secret",
+		});
+
+		const credKey = "url.https://x-access-token:ghp_secret@github.com/.insteadOf";
+		const fetch = calls.find((c) => c.cmd.includes("fetch"));
+		expect(fetch?.env?.GIT_CONFIG_KEY_0).toBe(credKey);
+		const push = calls.find((c) => c.cmd.includes("push"));
+		expect(push?.env?.GIT_CONFIG_KEY_0).toBe(credKey);
+		// The scrub still composes under the credential (keys present-and-undefined).
+		expect(push?.env).toHaveProperty("GIT_DIR");
+		expect(push?.env?.GIT_DIR).toBeUndefined();
+		// Local git ops (worktree/commit/status) never see the credential…
+		const commit = calls.find((c) => c.cmd.includes("commit"));
+		expect(commit?.env?.GIT_CONFIG_KEY_0).toBeUndefined();
+		// …and the token never rides in argv.
+		expect(calls.flatMap((c) => c.cmd).join(" ")).not.toContain("ghp_secret");
+	});
+
 	test("already-closed seed yields noop without a commit or push", async () => {
 		const { spawn, calls } = makeGitSpawn({ dirtyAfterClose: false });
 		const { seedsCli } = makeSeedsCli();
