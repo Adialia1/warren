@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-07-21
+
+Post-migration stabilization: closes out the k8s-migration plan
+(pl-829f / warren-e176) — reap-hang fix, scheduler self-heal, and the
+removal of the Fly.io hosting story.
+
+### Fixed
+
+- **`fix(k8s)`** — reap hang after pod exit (warren-c433): the
+  post-terminal stream drain awaited `iterator.return()` on the pod-log
+  stream, which could park forever and leave a completed run stuck in
+  `running` with the in-pod finalize-intent poll deadlocked. The drain
+  is now bounded (5s `DEFAULT_STREAM_TEARDOWN_MS`), reap parks the
+  finalize intent when terminal is observed via pod exit (degrading to
+  the documented finalize-timeout failure path when the pod's window
+  lapsed), and a new terminal-reconcile watchdog net
+  (`src/runs/watchdog-reconcile.ts`,
+  `WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS`, default 120s) force-finalizes
+  runs whose pod is terminal-or-gone but whose row stays non-terminal.
+  Pod-log follow disconnects while a pod is still Pending now log
+  quietly instead of warning every backoff.
+- **`fix(scheduler)`** — self-heal missing project clones (warren-1ec7):
+  a registered project whose host clone vanished (e.g. fresh PVC after
+  redeploy) is re-cloned on demand (`src/triggers/project-heal.ts`)
+  instead of failing every tick; failed re-clones back off (5m→1h) and
+  per-project error notices (`project_failed`, `sd_list_failed`) are
+  rate-limited to once per hour.
+- **`fix(k8s)`** — host-side git ops authenticate without the supervisor
+  (warren-57ad): bare `warren serve` (the K8s topology) injects the
+  GitHub token via git `insteadOf` config for host-side clone/fetch/push
+  instead of relying on supervisor-installed credentials.
+
+### Changed
+
+- **`chore(deploy)`** — Fly.io stripped from the hosting story
+  (warren-b65c): `fly.toml` deleted, the `release.yml` flyctl deploy job
+  and `FLY_API_TOKEN` removed, and README/SPEC/ACCEPTANCE/ROADMAP/env
+  docs rewritten for GKE (docs/RUNBOOK-K8S.md is the canonical deploy
+  procedure; `deploy-gke.yml` is the deploy automation). Historical
+  references remain in CHANGELOG and the k8s-migration design docs; the
+  Fly app itself is untouched as rollback.
+
 ## [0.10.0] — 2026-07-17
 
 The Kubernetes migration release (k8s-migration branch, warren-e176):
