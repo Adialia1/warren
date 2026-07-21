@@ -29,9 +29,11 @@ import type { RuntimeProvider } from "../runtime/contract.ts";
 import { listScheduledSeeds, updateExtensions } from "../seeds-cli/index.ts";
 import {
 	CronRetryTracker,
+	createProjectCloneHealer,
 	type DispatchSpawnFn,
 	type DispatchSpawnInput,
 	type DispatchSpawnResult,
+	ProjectHealTracker,
 	type SchedulerHandle,
 	type SchedulerTimerHandle,
 	startScheduler,
@@ -79,6 +81,12 @@ export interface BootSchedulerInput {
 	readonly githubToken?: string;
 	/** Override the spawnRun seam (tests). Defaults to the live `spawnRun`. */
 	readonly spawnRunFn?: typeof spawnRun;
+	/**
+	 * Filesystem probe for the self-heal clone check (warren-1ec7). Defaults
+	 * to `existsSync`; tests inject a stub so a registered project's clone can
+	 * be treated as present (or absent) without touching disk.
+	 */
+	readonly cloneExists?: (path: string) => boolean;
 	/** Test override for setInterval (forwarded to `startScheduler`). */
 	readonly setInterval?: (cb: () => void, ms: number) => SchedulerTimerHandle;
 	readonly clearInterval?: (handle: SchedulerTimerHandle) => void;
@@ -101,6 +109,23 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	const deleteNeverStartedRun = async (runId: string): Promise<void> => {
 		await input.repos.runs.deleteNeverStarted(runId);
 	};
+
+	// warren-1ec7: self-heal + notice rate-limiting. One tracker for the
+	// scheduler's process lifetime (in-memory; a restart resets backoff
+	// counters — same shape as cronRetryTracker). The healer re-clones a
+	// registered project whose on-disk clone vanished (ephemeral PVC), using
+	// the same token/`insteadOf` auth as the dispatch clone (warren-57ad),
+	// and the tracker gates the per-project error notices to once per hour.
+	const projectHealTracker = new ProjectHealTracker();
+	const ensureProjectClone = createProjectCloneHealer({
+		tracker: projectHealTracker,
+		config: input.projectsConfig,
+		spawn: input.projectSpawn,
+		...(input.githubToken !== undefined ? { token: input.githubToken } : {}),
+		...(input.logger !== undefined ? { logger: input.logger } : {}),
+		...(input.cloneExists !== undefined ? { exists: input.cloneExists } : {}),
+		...(input.now !== undefined ? { now: input.now } : {}),
+	});
 
 	const spawnDispatch: DispatchSpawnFn = async (
 		args: DispatchSpawnInput,
@@ -178,6 +203,8 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		spawn: spawnDispatch,
 		cronRetryTracker,
 		deleteNeverStartedRun,
+		ensureProjectClone,
+		noticeGate: projectHealTracker,
 		ciFixer: {
 			githubToken: input.githubToken ?? "",
 			spawn: ciFixerSpawn,
