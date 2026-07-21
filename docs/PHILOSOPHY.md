@@ -164,7 +164,8 @@ Standing order of work, each step paid for by a roadmap item
    effectively landed: `ServerDeps.burrowClient` is gone and spawn/reap
    route through `RuntimeProvider`. Close out the remaining pl-829f
    children and the boundary lint.
-2. **Deletion pass** — conversations → plot (+ plot-plan-run bridges)
+2. **Deletion pass** (pl-3a79, warren-e7e7…warren-0515) —
+   conversations → plot (+ plot-plan-run bridges)
    → canopy, in that order (conversations depend on plot; plan-runs'
    plot hooks leave with plot). Includes pulling the plot merge out of
    `RuntimeProvider.finalize()` and deleting the twelve plot injector
