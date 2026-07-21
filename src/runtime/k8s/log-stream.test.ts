@@ -7,6 +7,7 @@ import {
 	type LogFollowParams,
 	STREAM_GAP_KIND,
 	type StreamCounterSink,
+	type StreamLogger,
 	type StreamTerminalState,
 	streamK8sLogs,
 	type TerminalProbe,
@@ -93,6 +94,7 @@ function probeSequence(...states: StreamTerminalState[]): TerminalProbe {
 const RUNNING: StreamTerminalState = { exists: true, terminal: false };
 const TERMINAL: StreamTerminalState = { exists: true, terminal: true };
 const GONE: StreamTerminalState = { exists: false, terminal: false };
+const PENDING: StreamTerminalState = { exists: true, terminal: false, pending: true };
 
 const PARAMS = { namespace: "warren-runs", podName: "run-run-x", containerName: "agent" };
 
@@ -466,5 +468,31 @@ describe("streamK8sLogs — log rotation", () => {
 		expect(events.map((e) => e.kind)).toEqual(["a", "b", "c", "d"]);
 		expect(events.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
 		expect(events.some((e) => e.kind === STREAM_GAP_KIND)).toBe(false);
+	});
+});
+
+describe("streamK8sLogs — pending-pod reconnect noise (warren-c433)", () => {
+	test("a follow ending while the pod is Pending logs quietly, not a warn", async () => {
+		const warns: string[] = [];
+		const infos: string[] = [];
+		const logger: StreamLogger = {
+			info: (_o, m) => void infos.push(m),
+			warn: (_o, m) => void warns.push(m),
+		};
+		// First connection drops transiently while the pod is still Pending; the
+		// second (default clean close) reports terminal and ends the stream. The
+		// Pending disconnect must NOT warn "disconnected while pod live".
+		await drain(
+			streamK8sLogs({
+				follow: new ScriptedLog([linesThenDrop()]).follow,
+				probe: probeSequence(PENDING, TERMINAL),
+				params: PARAMS,
+				backoffBaseMs: 1,
+				backoffMaxMs: 2,
+				logger,
+			}),
+		);
+		expect(warns.some((m) => m.includes("disconnected while pod live"))).toBe(false);
+		expect(infos.some((m) => m.includes("waiting for pending pod to start"))).toBe(true);
 	});
 });

@@ -87,7 +87,8 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// that ignore the cursor (e.g. a test `source` override, which bypasses the
 	// provider entirely).
 	const source: (signal: AbortSignal) => AsyncIterable<StreamEventView> =
-		input.source ?? providerStreamSource(provider, handle, { sinceSeq: resumeSeq });
+		input.source ??
+		providerStreamSource(provider, handle, { sinceSeq: resumeSeq }, input.streamTeardownMs);
 
 	// warren-a63d: resolve the run's effective spend cap once. Explicit
 	// input wins (tests); otherwise read the cap frozen onto

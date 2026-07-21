@@ -618,6 +618,32 @@ the legacy 45-min one) marks the run `failed` once the watch confirms the pod is
 gone but the run row is still `running`. The DB (Postgres, external) survives; the
 control plane restarts via its Deployment. In-flight runs are lost, not resumed.
 
+### 7.8 Run stuck `running` after its pod completed (reap hang, warren-c433)
+
+Symptom: a run row stays `state=running`, `endedAt=null` long after `kubectl -n
+warren-runs get pods` shows the pod `Succeeded`/`Failed`; the last log line is the
+run-state poller's "observed burrow terminal; draining stream before abort". Root
+cause was a pod-log follow that never EOF'd after the pod exited: the post-terminal
+stream teardown parked on `iterator.return()` forever, so reap (and the in-pod
+finalize handshake) never fired.
+
+Mitigations now in place:
+
+- The post-terminal stream teardown is **bounded** (`DEFAULT_STREAM_TEARDOWN_MS`,
+  5s): a hung pod-log pump can no longer wedge the bridge's path to reap.
+- The heartbeat watchdog gained a **terminal-reconcile net**: each tick it probes
+  `status()` for a `running` run idle past `WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS`
+  (default 2 min; `0` disables). If the pod is terminal-or-gone but the row is still
+  `running`, it force-finalizes through reap with the pod's actual outcome — a
+  `succeeded` pod re-drives the in-pod finalize (a still-polling pod parks/picks up
+  the intent; an already-lapsed one degrades to the documented finalize-timeout
+  `FinalizeResult`). This emits a `watchdog.terminal_reconciled` event on the run.
+
+If a run is still wedged: check the control-plane logs for `watchdog reconciled
+terminal-but-stuck run`; if the net is disabled (`WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS=0`)
+re-enable it, or `kubectl -n warren-runs delete pod <pod>` to force the pod-gone
+path.
+
 ---
 
 ## 8. Capability degradations on k8s (know before you promise)

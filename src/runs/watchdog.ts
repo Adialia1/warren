@@ -48,13 +48,17 @@
 
 import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
-import type { RunRow } from "../db/schema.ts";
+import type { RunRow, RunTerminalState } from "../db/schema.ts";
 import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
 import { type BridgeLogger, bindBridgeLogger } from "./stream/index.ts";
+import {
+	DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS,
+	maybeReconcileTerminal,
+} from "./watchdog-reconcile.ts";
 
 /**
  * The reap seam the watchdog force-fails a hung run through (warren-1fce). The
@@ -96,6 +100,16 @@ export interface WatchdogTickDeps {
 	 * positive — the boot wrapper refuses to arm with a non-positive value.
 	 */
 	readonly heartbeatTimeoutMs: number;
+	/**
+	 * Grace (ms) for the terminal-reconcile safety net (warren-c433). A `running`
+	 * run whose provider `status()` reports terminal-or-gone but whose row is still
+	 * non-terminal is force-finalized once its heartbeat age exceeds this. Positive
+	 * ⇒ armed; `0` (or omitted) ⇒ the net is off and only the heartbeat force-fail
+	 * runs (the pre-warren-c433 behaviour, kept for tests that don't opt in). The
+	 * `status()` probe only fires for runs already idle past this grace, so a
+	 * healthy run emitting events is never probed.
+	 */
+	readonly terminalReconcileGraceMs?: number;
 	readonly broker?: RunEventBroker;
 	/** Forwarded to reap so a timed-out run still gets the configured PR/branch handling. */
 	readonly autoOpenPr?: AutoOpenPrConfig;
@@ -111,6 +125,17 @@ export interface WatchdogTickDeps {
 
 export interface WatchdogTickResult {
 	readonly timedOut: readonly { readonly runId: string; readonly idleMs: number }[];
+	/**
+	 * Runs the terminal-reconcile net force-finalized this tick (warren-c433):
+	 * their pod was terminal-or-gone but the row stayed non-terminal past the
+	 * grace. Carries the reconciled outcome so callers can distinguish a reclaimed
+	 * already-dead run from a heartbeat force-fail.
+	 */
+	readonly reconciled: readonly {
+		readonly runId: string;
+		readonly idleMs: number;
+		readonly outcome: RunTerminalState;
+	}[];
 	readonly errors: readonly { readonly runId: string; readonly reason: string }[];
 }
 
@@ -138,27 +163,28 @@ export async function computeIdleMs(repos: Repos, run: RunRow, now: Date): Promi
 export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTickResult> {
 	const now = deps.now ?? (() => new Date());
 	const timedOut: { runId: string; idleMs: number }[] = [];
+	const reconciled: { runId: string; idleMs: number; outcome: RunTerminalState }[] = [];
 	const errors: { runId: string; reason: string }[] = [];
+	const graceMs = deps.terminalReconcileGraceMs ?? 0;
 
 	let running: RunRow[];
 	try {
 		running = await deps.repos.runs.listByState("running");
 	} catch (err) {
-		return { timedOut, errors: [{ runId: "<listByState:running>", reason: formatError(err) }] };
+		return {
+			timedOut,
+			reconciled,
+			errors: [{ runId: "<listByState:running>", reason: formatError(err) }],
+		};
 	}
 
 	for (const run of running) {
 		try {
-			// warren-c770: a `conversation` run is deliberately
-			// long-lived across turns — the pi-chat runtime suppresses the
-			// per-turn terminal envelope, so the run sits idle between operator
-			// messages. An armed heartbeat watchdog must not mistake that idle
-			// for a hung tool and force-fail it.
-			if (run.mode === "conversation") continue;
-			const idleMs = await computeIdleMs(deps.repos, run, now());
-			if (idleMs === null || idleMs < deps.heartbeatTimeoutMs) continue;
-			await forceFail(deps, run, idleMs, now());
-			timedOut.push({ runId: run.id, idleMs });
+			const action = await evaluateRun(deps, run, now(), graceMs);
+			if (action.kind === "timedOut") timedOut.push({ runId: run.id, idleMs: action.idleMs });
+			else if (action.kind === "reconciled") {
+				reconciled.push({ runId: run.id, idleMs: action.idleMs, outcome: action.outcome });
+			}
 		} catch (err) {
 			errors.push({ runId: run.id, reason: formatError(err) });
 			bindBridgeLogger(deps.logger, { run_id: run.id }).error(
@@ -168,7 +194,47 @@ export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTick
 		}
 	}
 
-	return { timedOut, errors };
+	return { timedOut, reconciled, errors };
+}
+
+/** What the tick did (or didn't do) for one `running` run. */
+type TickAction =
+	| { kind: "timedOut"; idleMs: number }
+	| { kind: "reconciled"; idleMs: number; outcome: RunTerminalState }
+	| { kind: "none" };
+
+/**
+ * Classify + act on a single `running` run. Split out of `tickWatchdog` to keep
+ * that function under the complexity ratchet; the caller owns error isolation and
+ * result accumulation.
+ */
+async function evaluateRun(
+	deps: WatchdogTickDeps,
+	run: RunRow,
+	now: Date,
+	graceMs: number,
+): Promise<TickAction> {
+	// warren-c770: a `conversation` run is deliberately long-lived across turns —
+	// the pi-chat runtime suppresses the per-turn terminal envelope, so the run
+	// sits idle between operator messages. The watchdog must not mistake that idle
+	// for a hung tool and force-fail it.
+	if (run.mode === "conversation") return { kind: "none" };
+	const idleMs = await computeIdleMs(deps.repos, run, now);
+	if (idleMs === null) return { kind: "none" };
+	if (idleMs >= deps.heartbeatTimeoutMs) {
+		await forceFail(deps, run, idleMs, now);
+		return { kind: "timedOut", idleMs };
+	}
+	// warren-c433: terminal-reconcile safety net. Below the heartbeat budget but idle
+	// past the grace, probe the backend: if the pod is terminal-or-gone yet the row is
+	// still `running`, the normal terminal-detect → reap path is wedged (the K8s
+	// pod-exit reap hang) — reclaim the already-dead run instead of waiting out the
+	// full 45-min heartbeat budget. Only runs already idle past the grace are probed.
+	if (graceMs > 0 && idleMs >= graceMs) {
+		const outcome = await maybeReconcileTerminal(deps, run, idleMs, now);
+		if (outcome !== null) return { kind: "reconciled", idleMs, outcome };
+	}
+	return { kind: "none" };
 }
 
 async function forceFail(
@@ -274,12 +340,18 @@ export interface WatchdogConfig {
 	readonly enabled: boolean;
 	readonly heartbeatTimeoutMs: number;
 	readonly tickMs: number;
+	/**
+	 * Terminal-reconcile grace (ms) for the warren-c433 safety net. Defaults to
+	 * `DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS`; `0` disables the net.
+	 */
+	readonly terminalReconcileGraceMs: number;
 }
 
 interface WatchdogEnvLike {
 	readonly WARREN_RUN_HEARTBEAT_TIMEOUT_MS?: string;
 	readonly WARREN_WATCHDOG_TICK_MS?: string;
 	readonly WARREN_WATCHDOG_DISABLED?: string;
+	readonly WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS?: string;
 }
 
 /**
@@ -301,8 +373,18 @@ export function loadWatchdogConfigFromEnv(env: WatchdogEnvLike): WatchdogConfig 
 		"WARREN_WATCHDOG_TICK_MS",
 		DEFAULT_WATCHDOG_TICK_MS,
 	);
+	const terminalReconcileGraceMs = parseNonNegativeInt(
+		env.WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS,
+		"WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS",
+		DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS,
+	);
 	const optedOut = parseDisabledFlag(env.WARREN_WATCHDOG_DISABLED);
-	return { enabled: !optedOut && heartbeatTimeoutMs > 0, heartbeatTimeoutMs, tickMs };
+	return {
+		enabled: !optedOut && heartbeatTimeoutMs > 0,
+		heartbeatTimeoutMs,
+		tickMs,
+		terminalReconcileGraceMs,
+	};
 }
 
 function parseDisabledFlag(raw: string | undefined): boolean {
