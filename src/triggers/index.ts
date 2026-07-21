@@ -41,6 +41,19 @@ export {
 } from "./dispatch.ts";
 export { TriggerDispatchError } from "./errors.ts";
 export {
+	createProjectCloneHealer,
+	type EnsureProjectCloneFn,
+	type HealLogger,
+	NOTICE_INTERVAL_MS,
+	type ProjectCloneHealerInput,
+	type ProjectCloneHealResult,
+	ProjectHealTracker,
+	RECLONE_BACKOFF_BASE_MS,
+	RECLONE_BACKOFF_MAX_MS,
+	type RecloneMissingProjectInput,
+	recloneMissingProject,
+} from "./project-heal.ts";
+export {
 	type RecordFireInput,
 	type TriggerKey,
 	TriggersRepo,
@@ -57,6 +70,7 @@ export {
 	type RunTickResult,
 	runTick,
 	type SchedulerHandle,
+	type SchedulerNoticeGate,
 	type SchedulerTimerHandle,
 	type StartSchedulerInput,
 	startScheduler,

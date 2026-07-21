@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
@@ -130,6 +133,9 @@ describe("bootScheduler", () => {
 			config: { ...SCHEDULER_CONFIG, disabled: true },
 			now: () => NOW,
 			spawnRunFn,
+			// Self-heal probe (warren-1ec7): treat the clone as present so the
+			// tick reaches dispatch without touching disk.
+			cloneExists: () => true,
 		});
 
 		const result = await handle.runOnce();
@@ -211,6 +217,7 @@ describe("bootScheduler", () => {
 			config: { ...SCHEDULER_CONFIG, sdBinary: "sd-test", disabled: true },
 			now: () => NOW,
 			spawnRunFn,
+			cloneExists: () => true,
 		});
 
 		const result = await handle.runOnce();
@@ -245,6 +252,56 @@ describe("bootScheduler", () => {
 		// have produced).
 		expect(spawnCalls.filter((c) => c.cmd[1] === "update")).toHaveLength(1);
 		expect(bridgeCalls).toHaveLength(1);
+	});
+
+	test("warren-1ec7: a missing clone is re-cloned via projectSpawn and the tick proceeds", async () => {
+		const warrenConfigs = createWarrenConfigCache({
+			load: async () => ({
+				triggers: null,
+				defaults: null,
+				prTemplate: null,
+				sourceFile: null,
+				errors: [],
+				warnings: [],
+			}),
+		});
+
+		// Point the projects root at a tmp dir so `cloneProjectRepo`'s real
+		// parent-dir mkdir succeeds; the git spawn itself is stubbed.
+		const tmpRoot = await mkdtemp(join(tmpdir(), "warren-heal-"));
+		let missing = true;
+		const gitCommands: string[][] = [];
+		const projectSpawn: SpawnFn = async (cmd) => {
+			gitCommands.push([...cmd]);
+			if (cmd[1] === "clone") missing = false; // clone materialized the dir
+			return { stdout: "", stderr: "", exitCode: 0 };
+		};
+
+		try {
+			const handle = bootScheduler({
+				repos,
+				runtimeProvider: RUNTIME_PROVIDER,
+				bridges: makeBridges([]),
+				warrenConfigs,
+				projectsConfig: { root: tmpRoot, gitBinary: "git" },
+				projectSpawn,
+				config: { ...SCHEDULER_CONFIG, disabled: true },
+				now: () => NOW,
+				// The clone is absent until the re-clone spawn runs.
+				cloneExists: () => !missing,
+			});
+
+			const result = await handle.runOnce();
+			await handle.stop();
+
+			// The tick self-healed rather than surfacing a project error.
+			expect(result?.projectErrors).toEqual([]);
+			const cloneCall = gitCommands.find((c) => c[1] === "clone");
+			expect(cloneCall).toBeDefined();
+			expect(cloneCall).toContain("https://github.com/x/y.git");
+		} finally {
+			await rm(tmpRoot, { recursive: true, force: true });
+		}
 	});
 
 	test("disabled config does not schedule an interval", async () => {
