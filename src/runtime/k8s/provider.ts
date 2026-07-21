@@ -192,10 +192,7 @@ export function defaultCoreApiFactory(): () => CoreV1Api {
 	};
 }
 
-/**
- * Route Bun's install cache outside the workspace so `git add .` never sweeps
- * it — provider-owned filesystem-layout env, mirroring LocalProvider (§6.1).
- */
+/** Bun install cache outside the workspace so `git add .` never sweeps it (§6.1). */
 const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
 
 export class K8sProvider implements RuntimeProvider {
@@ -357,15 +354,16 @@ export class K8sProvider implements RuntimeProvider {
 	}
 
 	/**
-	 * Project `status()` onto the log stream's terminate-vs-reconnect decision: an
-	 * absent pod ⇒ `exists:false` (the stream ends with `lost`); a terminal phase
-	 * ⇒ drain then end; anything else ⇒ a transient disconnect the stream retries.
+	 * Project `status()` onto the stream's terminate-vs-reconnect decision: absent
+	 * ⇒ `exists:false` (lost); terminal phase ⇒ drain then end; `queued` ⇒ still
+	 * Pending (disconnect logged quietly, warren-c433); else ⇒ transient retry.
 	 */
 	private async streamTerminalProbe(handle: RunHandle): Promise<StreamTerminalState> {
 		const status = await this.status(handle);
 		return {
 			exists: status.exists,
 			terminal: status.exists && isTerminalPhase(status.phase),
+			pending: status.exists && status.phase === "queued",
 		};
 	}
 

@@ -63,6 +63,19 @@ async function* finiteStream(events: NormalizedEvent[]): AsyncIterable<Normalize
 	for (const e of events) yield e;
 }
 
+/** Resolve `p`, or the `"timeout"` sentinel if it doesn't settle in `ms`. */
+async function within<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<"timeout">((resolve) => {
+		timer = setTimeout(() => resolve("timeout"), ms);
+	});
+	try {
+		return await Promise.race([p, timeout]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
+}
+
 /**
  * A stream that yields `events`, then stays open with a periodic keepalive
  * until the consumer `return()`s it — mirroring a live pod-log tail the
@@ -82,6 +95,35 @@ function openStream(
 				await new Promise((r) => setTimeout(r, 5));
 				yield nevt(keepaliveSeq);
 			}
+		},
+	});
+}
+
+/**
+ * A pod-log stream that yields `events`, then parks FOREVER on `next()` (no more
+ * chunks, no EOF) and whose `return()` also never resolves — the warren-c433
+ * incident shape: the kubelet never closed the follow after the pod completed, so
+ * the pump can't be torn down by `.return()`. Proves the bounded teardown lets the
+ * bridge still reach terminal/reap.
+ */
+function hangingStream(
+	events: NormalizedEvent[],
+): (handle: RunHandle) => AsyncIterable<NormalizedEvent> {
+	return () => ({
+		[Symbol.asyncIterator]() {
+			let i = 0;
+			return {
+				next(): Promise<IteratorResult<NormalizedEvent>> {
+					if (i < events.length) {
+						const value = events[i++];
+						if (value !== undefined) return Promise.resolve({ done: false, value });
+					}
+					return new Promise<IteratorResult<NormalizedEvent>>(() => {});
+				},
+				return(): Promise<IteratorResult<NormalizedEvent>> {
+					return new Promise<IteratorResult<NormalizedEvent>>(() => {});
+				},
+			};
 		},
 	});
 }
@@ -173,6 +215,42 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 			runStateDrainMs: 10,
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "failed", failureReason: "oom_killed" });
+	});
+
+	test("terminal via pod-exit still reaps when the pod-log teardown hangs (warren-c433)", async () => {
+		// The pod completed (status → succeeded) but its follow never EOF'd and
+		// its teardown hangs — the incident that wedged run_nejha296p9es in
+		// `running` for 40+ min. With the bounded teardown the bridge must still
+		// synthesize `terminalDetected` (which drives reap → finalize → intent park)
+		// instead of hanging forever on `iterator.return()`.
+		let statusCalls = 0;
+		const provider = makeFakeProvider({
+			streamEvents: hangingStream([nevt(1)]),
+			status: async (): Promise<RunStatus> => {
+				statusCalls += 1;
+				return statusCalls < 2
+					? runningStatus()
+					: { phase: "succeeded", exitCode: 0, lastEventSeq: 1, lastEventTs: null, exists: true };
+			},
+		});
+		const result = await within(
+			bridgeRunStream({
+				runId,
+				burrowRunId,
+				repos,
+				broker,
+				burrowId: BURROW_ID,
+				runtimeProvider: provider,
+				runStatePollMs: 5,
+				runStateDrainMs: 5,
+				streamTeardownMs: 20, // hung teardown must not outlast this
+			}),
+			2000,
+		);
+		expect(result).not.toBe("timeout");
+		const bridged = result as Awaited<ReturnType<typeof bridgeRunStream>>;
+		expect(bridged.terminalDetected).toEqual({ outcome: "succeeded" });
+		expect(bridged.errored).toBe(false);
 	});
 
 	test("provider.streamEvents RuntimeRunNotFoundError → burrowRunMissing (lost run)", async () => {

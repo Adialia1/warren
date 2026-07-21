@@ -115,6 +115,13 @@ export interface StreamTerminalState {
 	readonly exists: boolean;
 	/** `true` ⇒ the pod reached a terminal phase; drain, then end the stream. */
 	readonly terminal: boolean;
+	/**
+	 * `true` ⇒ the pod is still Pending (scheduling / image pull / init; phase
+	 * `queued`). A follow that ends here is EXPECTED — no agent log to tail — so the
+	 * reconnect loop logs it quietly instead of warning every backoff for the pod's
+	 * whole Pending window (warren-c433). Omitted ⇒ the pre-existing live-disconnect warn.
+	 */
+	readonly pending?: boolean;
 }
 
 /** Probes whether the run's pod is still live / terminal (wraps `status()`). */
@@ -203,13 +210,24 @@ async function* pump(deps: K8sLogStreamDeps): AsyncGenerator<NormalizedEvent, vo
 		}
 
 		firstConnection = false;
-		deps.logger?.warn?.(
-			{ podName: deps.params.podName, backoffMs: backoff },
-			"pod-log follow disconnected while pod live; backing off before resume",
-		);
+		logReconnect(deps, term, backoff);
 		await sleep(backoff);
 		backoff = Math.min(backoff * 2, backoffMax);
 	}
+}
+
+/**
+ * Log a live-follow disconnect before backing off to reconnect. A Pending pod's
+ * disconnect is EXPECTED (info); a live-pod disconnect warns as before (warren-c433).
+ * Split out so `pump` stays under the complexity ratchet.
+ */
+function logReconnect(deps: K8sLogStreamDeps, term: StreamTerminalState, backoff: number): void {
+	const b = { podName: deps.params.podName, backoffMs: backoff };
+	if (term.pending === true) {
+		deps.logger?.info?.(b, "pod-log follow waiting for pending pod to start; backing off");
+		return;
+	}
+	deps.logger?.warn?.(b, "pod-log follow disconnected while pod live; backing off before resume");
 }
 
 /**

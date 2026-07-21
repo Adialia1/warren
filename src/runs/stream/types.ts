@@ -191,6 +191,14 @@ export interface BridgeRunStreamInput {
 	/** Override the post-terminal drain window (ms). Default 1000. */
 	readonly runStateDrainMs?: number;
 	/**
+	 * Override the bounded provider-stream teardown ceiling (ms) applied after the
+	 * poller aborts (warren-c433). Default `DEFAULT_STREAM_TEARDOWN_MS`. Only takes
+	 * effect on the default provider-stream wiring (a test `source` override owns
+	 * its own teardown); tests pin it small to prove a hung K8s log pump can't wedge
+	 * the bridge's path to terminal/reap.
+	 */
+	readonly streamTeardownMs?: number;
+	/**
 	 * Effective per-run spend cap in USD (warren-a63d). When set, the
 	 * bridge cancels the run once cumulative cost crosses it. Normally
 	 * resolved by the bridge itself from `runs.rendered_agent_json`

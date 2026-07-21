@@ -244,6 +244,7 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 		// (warren-1fce / warren-5a3f).
 		reap: input.reap,
 		heartbeatTimeoutMs: config.heartbeatTimeoutMs,
+		terminalReconcileGraceMs: config.terminalReconcileGraceMs,
 		tickMs: config.tickMs,
 		disabled: !config.enabled,
 		logger: bridgeLoggerFromPino(logger),
@@ -253,7 +254,11 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 		logger.info({}, "run watchdog disabled via WARREN_WATCHDOG_DISABLED (or budget pinned to 0)");
 	} else {
 		logger.info(
-			{ tickMs: config.tickMs, heartbeatTimeoutMs: config.heartbeatTimeoutMs },
+			{
+				tickMs: config.tickMs,
+				heartbeatTimeoutMs: config.heartbeatTimeoutMs,
+				terminalReconcileGraceMs: config.terminalReconcileGraceMs,
+			},
 			"run watchdog running",
 		);
 	}

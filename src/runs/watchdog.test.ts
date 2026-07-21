@@ -21,8 +21,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
-import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
-import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
+import type { ReapRunInput } from "./reap/index.ts";
+import {
+	fakeReapResult,
+	makeAgentJson,
+	makeCancelProvider,
+	PROJECT_ID,
+} from "./watchdog.test-helpers.ts";
 import {
 	bootWatchdog,
 	computeIdleMs,
@@ -31,63 +36,7 @@ import {
 	tickWatchdog,
 	WATCHDOG_TIMED_OUT_KIND,
 } from "./watchdog.ts";
-
-const PROJECT_ID = "prj_xxxxxxxxxxxx";
-
-function makeAgentJson() {
-	return {
-		name: "claude-code",
-		version: 1,
-		sections: { system: "be helpful" },
-		resolvedFrom: [],
-		frontmatter: {},
-	};
-}
-
-function fakeReapResult(state: ReapRunResult["state"]): ReapRunResult {
-	return {
-		state,
-		failureReason: state === "failed" ? "timed_out" : null,
-		providerError: null,
-		mulchUpdated: 0,
-		mulchSkipped: 0,
-		mulchAppended: 0,
-		seedsClosed: 0,
-		seedsCreated: 0,
-		seedIdClosed: false,
-		plotEventsAppended: 0,
-		plotsUpdated: 0,
-		plotEventsMirrored: 0,
-		plotCommitted: false,
-		seedsCommitted: false,
-		branchPushed: false,
-		commitsAhead: null,
-		prUrl: null,
-		previewState: null,
-		previewPort: null,
-		previewUrl: null,
-		autoPlanRunCreated: false,
-		autoPlanRunId: null,
-		autoPlanRunPlanId: null,
-		workspaceDestroyed: true,
-		errors: [],
-		alreadyTerminal: false,
-	};
-}
-
-/** Minimal pool stub recording cancel calls. */
-/**
- * Fake `RuntimeProvider` that records the graceful-cancel target (warren-1f56).
- * The watchdog burrow-cancel now rides the seam (`provider.cancel(handle)`), so
- * the test injects a provider whose `cancel` pushes the run's `providerRunId`.
- */
-function makeCancelProvider(cancels: string[]): RuntimeProvider {
-	return {
-		cancel: async (handle: RunHandle) => {
-			cancels.push(handle.providerRunId);
-		},
-	} as unknown as RuntimeProvider;
-}
+import { DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS } from "./watchdog-reconcile.ts";
 
 describe("computeIdleMs", () => {
 	let db: WarrenDb;
@@ -166,6 +115,18 @@ describe("loadWatchdogConfigFromEnv", () => {
 		expect(cfg.enabled).toBe(true);
 		expect(cfg.heartbeatTimeoutMs).toBe(DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS);
 		expect(cfg.tickMs).toBe(30_000);
+		expect(cfg.terminalReconcileGraceMs).toBe(DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS);
+	});
+
+	test("honours an explicit terminal-reconcile grace and allows pinning to 0 (warren-c433)", () => {
+		expect(
+			loadWatchdogConfigFromEnv({ WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS: "30000" })
+				.terminalReconcileGraceMs,
+		).toBe(30_000);
+		expect(
+			loadWatchdogConfigFromEnv({ WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS: "0" })
+				.terminalReconcileGraceMs,
+		).toBe(0);
 	});
 
 	test("honours an explicit timeout", () => {
@@ -414,7 +375,7 @@ describe("bootWatchdog", () => {
 			disabled: true,
 		});
 		const result = await handle.runOnce();
-		expect(result).toEqual({ timedOut: [], errors: [] });
+		expect(result).toEqual({ timedOut: [], reconciled: [], errors: [] });
 		expect(handle.tickCount()).toBe(1);
 		await handle.stop();
 	});
