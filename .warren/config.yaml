@@ -11,9 +11,7 @@
 # These were migrated from .warren/defaults.json. Edit freely.
 
 defaultRole: pi
-# k8s-migration is the working mainline while the K8s migration completes;
-# revert to main (and reconsider provider/model) when the branch merges.
-defaultBranch: k8s-migration
+defaultBranch: main
 defaultProvider: anthropic
 defaultModel: claude-opus-4-8
 
