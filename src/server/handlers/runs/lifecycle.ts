@@ -78,8 +78,13 @@ export type PublicRun = Pick<RunRow, (typeof PUBLIC_RUN_FIELDS)[number]>;
  * Narrow one run row for `actor`. The operator gets the row untouched, so
  * the public body is provably the operator body minus fields — there is
  * only one construction site and the two cannot drift.
+ *
+ * Exported (warren-c405) because `GET /plan-runs/:id` fans out `runs[]` too
+ * and must reuse THIS function rather than grow a second projection: the
+ * plan-run detail handler served raw `RunRow`s to spectators until scenario
+ * 39 caught it.
  */
-function projectRun<T extends RunRow>(run: T, actor: Actor | undefined): T | PublicRun {
+export function projectRun<T extends RunRow>(run: T, actor: Actor | undefined): T | PublicRun {
 	return isPublicOnly(actor) ? pickFields(run, PUBLIC_RUN_FIELDS) : run;
 }
 
