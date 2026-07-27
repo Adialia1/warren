@@ -13,6 +13,7 @@ export {
 	DEFAULT_AUTH_KIND,
 	NO_AUTH,
 	OPERATOR_ACTOR,
+	policyAllows,
 	publicReadAuth,
 	type ResolveAuthOptions,
 	resolveAuth,
@@ -35,6 +36,7 @@ export {
 	type ServerConfig,
 } from "./config.ts";
 export {
+	forbidden,
 	INTERNAL_ERROR_MESSAGE,
 	methodNotAllowed,
 	notFound,
@@ -45,6 +47,7 @@ export {
 export {
 	API_PREFIXES,
 	API_ROUTE_PATTERNS,
+	API_ROUTE_POLICIES,
 	buildApiRoutes,
 	isApiPath,
 	isAuthExempt,
@@ -66,6 +69,7 @@ export type {
 	AuthOutcome,
 	AuthProvider,
 	BridgeRegistry,
+	CapabilityName,
 	ErrorEnvelope,
 	HttpMethod,
 	Logger,
@@ -73,6 +77,7 @@ export type {
 	RouteContext,
 	RouteHandler,
 	RoutePattern,
+	RoutePolicy,
 	ServeHandle,
 	ServeOptions,
 	ServerDeps,

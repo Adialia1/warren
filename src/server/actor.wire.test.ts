@@ -59,7 +59,11 @@ function tcpUrl(handle: ServeHandle): string {
 	return `http://${handle.transport.hostname}:${handle.transport.port}`;
 }
 
-/** A route that records whatever actor (if any) the gate handed the handler. */
+/**
+ * A route that records whatever actor (if any) the gate handed the handler.
+ * `readPublic` so every actor below reaches it — the capability gate itself
+ * is covered in `handlers/policy.wire.test.ts` (warren-b875).
+ */
 function capturingRoutes(pattern: string): {
 	routes: Route[];
 	seen: Array<Actor | undefined>;
@@ -69,6 +73,7 @@ function capturingRoutes(pattern: string): {
 		{
 			method: "GET",
 			pattern,
+			policy: "readPublic",
 			handler: (ctx) => {
 				seen.push(ctx.actor);
 				return new Response("{}", { status: 200 });
