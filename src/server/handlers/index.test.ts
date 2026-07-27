@@ -68,6 +68,7 @@ describe("ROUTE_TABLE policy classification", () => {
 	const SPECTATOR_ROUTES: readonly string[] = [
 		"GET /healthz",
 		"GET /version",
+		"GET /whoami", // reflects the caller's own request back at it (warren-e195)
 		"GET /agents",
 		"GET /agents/:name",
 		"GET /projects",

@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **39**.
+Total routes: **40**.
 
 ## /agents
 
@@ -102,3 +102,9 @@ Total routes: **39**.
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/version` | `versionHandler` |  |
+
+## /whoami
+
+| Method | Pattern | Handler | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/whoami` | `whoamiHandler` | warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name. |

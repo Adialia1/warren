@@ -45,7 +45,7 @@ import {
 } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
 import { readyzHandler } from "./diagnostics.ts";
-import { healthzHandler, previewConfigHandler, versionHandler } from "./meta.ts";
+import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
 import {
 	cancelPlanRunHandler,
@@ -212,9 +212,9 @@ interface RouteEntry {
  *   token) and `/version` (the login screen reads it before the user has
  *   one). `isAuthExempt` is DERIVED from these two entries, so the exemption
  *   list can't drift from the policy table.
- * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees:
- *   the run / project / agent / plan-run listings and details, the run event
- *   stream, and the `/analytics/runs` rollup. Every one of these is served
+ * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees: the
+ *   run / project / agent / plan-run listings and details, the run event stream,
+ *   `/whoami` (the caller's own identity), and `/analytics/runs`. Each is served
  *   through a public projection (pl-b82d steps 14-16) before an instance is
  *   actually exposed; the policy is what makes the projection reachable, not
  *   what makes it safe.
@@ -244,6 +244,8 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/readyz", policy: "readOperator", build: readyzHandler },
 	{ method: "GET", pattern: "/version", policy: "anonymous", build: () => versionHandler() },
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
+	// warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.
+	{ method: "GET", pattern: "/whoami", policy: "readPublic", build: () => whoamiHandler() },
 
 	{ method: "GET", pattern: "/agents", policy: "readPublic", build: listAgentsHandler },
 	{ method: "POST", pattern: "/agents/refresh", policy: "admin", build: refreshAgentsHandler },
@@ -425,6 +427,7 @@ export const API_PREFIXES: readonly string[] = [
 	"/metrics",
 	"/preview",
 	"/plan-runs",
+	"/whoami",
 ];
 
 /**

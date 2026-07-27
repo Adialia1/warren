@@ -336,6 +336,32 @@ export interface ApiErrorEnvelope {
 	error: { code: string; message: string; hint?: string };
 }
 
+/* ----------------------------------------------------------------------- */
+/* Caller identity — `GET /whoami` (warren-e195).                          */
+/*                                                                         */
+/* Mirrors `ActorKind` / `CapabilityName` / the whoami body in             */
+/* src/server/types.ts + src/server/handlers/whoami.ts — kept manually in  */
+/* sync because src/ui/ is excluded from the root tsconfig and the         */
+/* boundary is the HTTP wire, not a TS import (mx-2e4a1a).                 */
+/* ----------------------------------------------------------------------- */
+
+/** Who warren admitted this browser as. */
+export type ActorIdentity = "operator" | "anonymous";
+
+/** One capability name. `readPublic` is all a public-instance visitor holds. */
+export type CapabilityName = "readPublic" | "readOperator" | "dispatch" | "admin";
+
+/**
+ * Wire envelope of `GET /whoami`. `capabilities` lists only the granted
+ * names, so the UI checks membership rather than a boolean flag. Under the
+ * default `WARREN_AUTH=token` the route 401s a browser with no stored
+ * token, which the existing `UnauthorizedError` path already handles.
+ */
+export interface WhoamiResponse {
+	identity: ActorIdentity;
+	capabilities: CapabilityName[];
+}
+
 /**
  * Wire envelope of `GET /preview/config` (R-19 / SPEC §11.L path addendum,
  * warren-016d). Deployment-wide preview routing mode + optional host. The
