@@ -273,4 +273,34 @@ describe("draftUnreleasedSection", () => {
 		const headings = (text: string) => (text.match(/^## \[/gm) ?? []).length;
 		expect(headings(out)).toBe(headings(changelog));
 	});
+
+	// A curated section that quotes a sentinel verbatim — easy to do when the
+	// entry is about the bumper itself — would make the NEXT bump's
+	// stripExistingDraft swallow everything between it and the real marker
+	// (warren-222c). Prose must name `version-bump:draft` without the comment
+	// delimiters.
+	test("the real CHANGELOG.md carries no leftover draft sentinels", () => {
+		const changelog = readFileSync(resolve(REPO_ROOT, "CHANGELOG.md"), "utf8");
+		expect(changelog).not.toContain(DRAFT_START);
+		expect(changelog).not.toContain(DRAFT_END);
+	});
+});
+
+describe("CHANGELOG archive split (warren-222c)", () => {
+	const ARCHIVE_REL = "docs/CHANGELOG-archive.md";
+
+	test("the live CHANGELOG links the archive and keeps only recent releases", () => {
+		const changelog = readFileSync(resolve(REPO_ROOT, "CHANGELOG.md"), "utf8");
+		expect(changelog).toContain(ARCHIVE_REL);
+		// Everything at or below 0.9.x lives in the archive now.
+		expect(changelog).not.toMatch(/^## \[0\.9\./m);
+	});
+
+	test("the archive holds the older history and points back at the live file", () => {
+		const archive = readFileSync(resolve(REPO_ROOT, ARCHIVE_REL), "utf8");
+		expect(archive).toMatch(/^## \[0\.9\.10\]/m);
+		expect(archive).toContain("../CHANGELOG.md");
+		// The archive is frozen — the bumper must never target it.
+		expect(archive).not.toContain("## [Unreleased]");
+	});
 });

@@ -300,4 +300,5 @@ see `CLAUDE.md` for the full command surface.
 - [`SPEC.md`](SPEC.md) — V1 design record
 - [`README.md`](README.md) — user-facing pitch + deploy instructions
 - [`ACCEPTANCE.md`](ACCEPTANCE.md) — operator runbook for V1 release gates
-- [`CHANGELOG.md`](CHANGELOG.md) — release history
+- [`CHANGELOG.md`](CHANGELOG.md) — release history (0.9.10 and earlier:
+  [`docs/CHANGELOG-archive.md`](docs/CHANGELOG-archive.md))
