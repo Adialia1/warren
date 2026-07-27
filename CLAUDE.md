@@ -212,13 +212,17 @@ the first failing gate.
 `check:ci-parity` (`bun scripts/check-ci-parity.ts`, also byte-identical
 to the template copy) imports `GATES` from `check-all.ts`, parses every
 `.github/workflows/ci*.yml` (today `ci.yml` + `ci-postgres.yml`), and
-fails when a CI `bun run <X>` step is not transitively reachable from
-the manifest. Per-repo escape hatches live in
-`scripts/ci-parity-config.json` — `aliases` (e.g. `check:coverage:ci` →
-`check:coverage`) for same-gate-different-reporter variants, `ciOnly`
-(`ui:install`, `build:ui`, `report:test-timing`,
-`report:quality-metrics`) for intentionally CI-only steps. Justify every
-entry in the config's `$comment`; never edit the script itself.
+asserts parity in **both** directions (warren-da69): CI → local, no CI
+`bun run <X>` step may be unreachable from the manifest; local → CI,
+every manifest gate must be transitively invoked by some CI step, so a
+gate can never silently vanish from `ci.yml`. Per-repo escape hatches
+live in `scripts/ci-parity-config.json` — `aliases` (e.g.
+`check:coverage:ci` → `check:coverage`) for same-gate-different-reporter
+variants, `ciOnly` (`ui:install`, `build:ui`, `report:test-timing`,
+`report:quality-metrics`) for intentionally CI-only steps, and its
+inverse `localOnly` for manifest gates deliberately kept out of CI
+(warren's is empty — CI runs all 12). Justify every entry in the
+config's `$comment`; never edit the script itself.
 
 `check:coverage` (warren-e4b1) wraps `bun test --coverage` and enforces
 the floors in `scripts/coverage-budgets.json` against the "All files"

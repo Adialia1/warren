@@ -90,8 +90,9 @@ Warren's resolved manifest, in order: `lint`, `typecheck`,
 `check:agents`, `check:dups` (jscpd), `check:deps`, `check:size`,
 `check:debt`, `check:bundle-size`, `gen:docs:check`, `gen:openapi:check`,
 `check:coverage` (tests + coverage ratchet), and `check:ci-parity` —
-the same set CI enforces (see `.github/workflows/ci.yml`; escape
-hatches live in `scripts/ci-parity-config.json`). Do not merge with
+the same set CI enforces, and `check:ci-parity` proves it in both
+directions (see `.github/workflows/ci.yml`; escape hatches live in
+`scripts/ci-parity-config.json`). Do not merge with
 lint warnings; fix at write time or promote to error in `biome.json`.
 
 Details on the additional checks:
