@@ -50,7 +50,7 @@ import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
-import { NO_AUTH, resolveAuth } from "../auth.ts";
+import { NO_AUTH, resolveAuth, resolveAuthKind } from "../auth.ts";
 import { bootBridges } from "../bridges.ts";
 import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
 import { bootScheduler } from "../scheduler.ts";
@@ -378,8 +378,21 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 
+	// Resolve the auth backend ONCE here (warren-851b), before the listener
+	// exists: an unrecognized `WARREN_AUTH` throws out of `bootServer` rather
+	// than degrading to a provider nobody asked for. `--no-auth` (token null)
+	// still wins — it is the loopback dev hatch and predates the selector.
+	const authKind = resolveAuthKind(env);
 	const auth: AuthProvider =
-		serverConfig.token !== null ? resolveAuth({ token: serverConfig.token }) : NO_AUTH;
+		serverConfig.token !== null
+			? resolveAuth({ token: serverConfig.token, kind: authKind })
+			: NO_AUTH;
+	if (authKind === "public" && serverConfig.token !== null) {
+		logger.warn(
+			{},
+			"WARREN_AUTH=public — unauthenticated callers may read this instance's public projections",
+		);
+	}
 
 	const handle = startServer(deps, {
 		transport: serverConfig.transport,

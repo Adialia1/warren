@@ -5,7 +5,9 @@
  * absent on the auth-exempt paths where the gate never runs.
  *
  * No handler consults the actor yet — this is the seam test that keeps the
- * threading honest until the public-read provider lands.
+ * threading honest until the policy layer reads it. warren-851b extends it
+ * to the public-read provider, whose anonymous actor is the first one that
+ * reaches a handler holding less than everything.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -14,7 +16,7 @@ import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { RunEventBroker } from "../runs/index.ts";
 import { resolveRuntimeProvider } from "../runtime/registry.ts";
-import { bearerAuth, NO_AUTH, OPERATOR_ACTOR } from "./auth.ts";
+import { ANONYMOUS_ACTOR, bearerAuth, NO_AUTH, OPERATOR_ACTOR, publicReadAuth } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 import { startServer } from "./server.ts";
 import type { Actor, Route, ServeHandle, ServerDeps } from "./types.ts";
@@ -140,6 +142,23 @@ describe("RouteContext.actor wire integration (warren-1ff0)", () => {
 		});
 		expect(res.status).toBe(401);
 		expect(seen).toEqual([]);
+	});
+
+	test("threads the anonymous actor onto a gated route under publicReadAuth", async () => {
+		const { routes, seen } = capturingRoutes("/projects");
+		handle = startServer(await depsFor(repos), {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: publicReadAuth(bearerAuth("secret")),
+			logger: silentLogger,
+			routes,
+		});
+		const anon = await fetch(`${tcpUrl(handle)}/projects`);
+		expect(anon.status).toBe(200);
+		const operator = await fetch(`${tcpUrl(handle)}/projects`, {
+			headers: { authorization: "Bearer secret" },
+		});
+		expect(operator.status).toBe(200);
+		expect(seen).toEqual([ANONYMOUS_ACTOR, OPERATOR_ACTOR]);
 	});
 
 	test("leaves the actor undefined on auth-exempt paths", async () => {
