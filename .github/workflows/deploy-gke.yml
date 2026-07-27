@@ -6,6 +6,12 @@ name: GKE Build & Deploy
 # (warren-bd79). Replaces the manual `deploy/docker/build-images.sh` +
 # `kubectl apply -k` flow documented in docs/RUNBOOK-K8S.md §1.2-1.3.
 #
+# The control-plane image is ALSO published to the public ghcr.io registry
+# (warren-26be) — that is the image docker-compose.yml pulls, so the
+# "one container, five-minute self-host" path never builds from source.
+# Only the control plane goes public; warren-agent and warren-workspace-init
+# only ever run on GKE and stay in the private Artifact Registry.
+#
 # Auth is GCP Workload Identity Federation — no long-lived JSON keys. A repo
 # admin configures the OIDC provider + service account as secrets and the
 # project/region/cluster as repo variables (see docs/RUNBOOK-K8S.md §1.6).
@@ -36,6 +42,11 @@ on:
         description: "Roll GKE forward after building (release path sets true)"
         type: boolean
         default: true
+      version:
+        description: "Released semver (no leading v) — adds :vX.Y.Z and :X.Y ghcr.io tags"
+        type: string
+        required: false
+        default: ""
   workflow_dispatch:
     inputs:
       deploy:
@@ -50,6 +61,10 @@ on:
 env:
   AR_BASE: ${{ vars.GCP_REGION || 'us-west1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO || 'warren' }}
   REGISTRY_HOST: ${{ vars.GCP_REGION || 'us-west1' }}-docker.pkg.dev
+  # Public home of the control-plane image (warren-26be). ghcr.io requires a
+  # lowercase path; `jayminwest/warren` already is. Kept as an expression
+  # rather than a literal so a fork publishes under its own owner.
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/warren
   # The commit to build + deploy. workflow_call passes the released SHA
   # explicitly (github.sha is unreliable across a reusable-workflow boundary
   # and for tag/release events); push + dispatch fall back to github.sha.
@@ -65,6 +80,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # required for Workload Identity Federation
+      packages: write # required to push the control-plane image to ghcr.io
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -83,12 +99,50 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
 
+      # ghcr.io needs no provisioned secret — the job's own GITHUB_TOKEN,
+      # scoped by `permissions: packages: write` above, is the credential.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: docker/setup-buildx-action@v3
+
+      # Public tag set for the control-plane image (warren-26be). Self-hosters
+      # pull this image from docker-compose.yml, so it carries semver as well
+      # as the commit SHA: `:<sha>` and `:latest` on every build, plus
+      # `:vX.Y.Z` and the moving `:X.Y` when a caller passes a released
+      # version (release.yml threads its version-check output through
+      # workflow_call). `:X.Y` is deliberately withheld from prereleases — a
+      # moving minor tag must never resolve to an rc.
+      - name: Compute ghcr.io tags for the control-plane image
+        id: ghcr-tags
+        env:
+          SHA: ${{ env.TARGET_SHA }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo "tags<<GHCR_TAGS_EOF"
+            echo "${GHCR_IMAGE}:${SHA}"
+            echo "${GHCR_IMAGE}:latest"
+            if [ -n "${VERSION}" ]; then
+              echo "${GHCR_IMAGE}:v${VERSION}"
+              if [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "${GHCR_IMAGE}:${VERSION%.*}"
+              fi
+            fi
+            echo "GHCR_TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       # Autopilot schedules amd64; an arm64 image CrashLoops with
       # `exec format error`. All three build on native amd64 with GHA layer
       # cache (per-image scope). Each is tagged by the full commit SHA and
-      # `latest`.
+      # `latest`; the control plane additionally carries the public ghcr.io
+      # tag set computed above. Single-arch is a known limitation of the
+      # public image too — a multi-arch manifest list is deliberately
+      # deferred (it costs QEMU build time on every push).
       - name: Build + push warren (control plane)
         uses: docker/build-push-action@v6
         with:
@@ -99,6 +153,7 @@ jobs:
           tags: |
             ${{ env.AR_BASE }}/warren:${{ env.TARGET_SHA }}
             ${{ env.AR_BASE }}/warren:latest
+            ${{ steps.ghcr-tags.outputs.tags }}
           cache-from: type=gha,scope=warren-control
           cache-to: type=gha,mode=max,scope=warren-control
 

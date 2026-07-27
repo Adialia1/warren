@@ -111,6 +111,10 @@ jobs:
   # suppresses workflow runs triggered by GITHUB_TOKEN-created events, so a
   # release-event trigger would never fire (warren-cb81). Passing github.sha
   # pins the build + rollout to this release's commit.
+  #
+  # The same job also publishes the public control-plane image, so the
+  # released semver rides along (warren-26be): it is what turns into the
+  # `ghcr.io/<owner>/warren:vX.Y.Z` and `:X.Y` tags self-hosters pin to.
   deploy:
     needs: release
     if: needs.release.outputs.release == 'true'
@@ -118,7 +122,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: write
     secrets: inherit
     with:
       sha: ${{ github.sha }}
       deploy: true
+      version: ${{ needs.release.outputs.version }}
