@@ -85,6 +85,15 @@ export interface RouteContext {
 	 * `X-Forwarded-For` and only falls back here.
 	 */
 	readonly clientIp?: string;
+	/**
+	 * The authorized caller and its capability set (warren-1ff0), from the
+	 * `AuthProvider` that admitted the request. Undefined on auth-exempt
+	 * paths (`isAuthExempt`: `/healthz` plus every non-API path, where the
+	 * gate never runs) and in tests that build a context by hand — every
+	 * gated API route has one. Handlers should branch on
+	 * `actor.capabilities.*`, never on `actor.kind`.
+	 */
+	readonly actor?: Actor;
 }
 
 export type RouteHandler = (ctx: RouteContext) => Response | Promise<Response>;
@@ -330,8 +339,49 @@ export interface ServeHandle {
 	stop(): Promise<void>;
 }
 
+/**
+ * What a caller is permitted to do — the gate branches on these, it does
+ * not re-derive them from who the caller is (warren-1ff0). Named for the
+ * permission, not the holder, mirroring `RuntimeCapabilities`
+ * (`src/runtime/contract.ts`): a flag says what the surface allows, so a
+ * later provider can grant an arbitrary subset without anyone teaching
+ * handlers a new identity vocabulary.
+ */
+export interface ActorCapabilities {
+	/** Read the public projection of runs / projects / agents. */
+	readonly readPublic: boolean;
+	/**
+	 * Read operator-only surfaces — diagnostics, the run inbox, cost
+	 * rollups, raw agent transcripts, per-project warren-config.
+	 */
+	readonly readOperator: boolean;
+	/** Dispatch runs / plan-runs and steer, pause, cancel them. */
+	readonly dispatch: boolean;
+	/** Mutate instance-level state — register projects, triggers, config. */
+	readonly admin: boolean;
+}
+
+/**
+ * Identity discriminant. `operator` is the single-user V1 caller (SPEC
+ * §3.2 / §11.D) that every provider shipped today authorizes; further
+ * kinds land with the providers that mint them.
+ */
+export type ActorKind = "operator";
+
+/**
+ * Who is making the request and what they may do. Produced by an
+ * `AuthProvider`, carried on `RouteContext.actor` so a handler consults
+ * capabilities instead of re-reading the Authorization header.
+ */
+export interface Actor {
+	readonly kind: ActorKind;
+	readonly capabilities: ActorCapabilities;
+}
+
 export interface AuthOk {
 	readonly ok: true;
+	/** The authorized caller. Threaded onto `RouteContext.actor`. */
+	readonly actor: Actor;
 }
 
 export interface AuthDenied {
