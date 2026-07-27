@@ -69,6 +69,7 @@
 		"build:ui": "cd src/ui && bun install --frozen-lockfile && bun run build",
 		"acceptance": "bun run scripts/acceptance/run.ts",
 		"acceptance:container": "bun run scripts/acceptance/run.ts --mode container",
+		"acceptance:public": "bun run scripts/acceptance/run.ts --only 39 --stop-on-failure",
 		"prepare": "[ -e .git ] && git config core.hooksPath scripts/hooks || true"
 	},
 	"devDependencies": {
