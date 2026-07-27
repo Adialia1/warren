@@ -24,7 +24,8 @@ deploy/k8s/
   overlays/
     kind/                 local: nginx ingress, imagePullPolicy Never, small PVC
     gke/                  GKE Autopilot: Artifact Registry images, gce Ingress + static IP,
-                          ManagedCertificate TLS, FrontendConfig HTTPS redirect, NEG ClusterIP
+                          ManagedCertificate TLS, FrontendConfig HTTPS redirect, NEG ClusterIP,
+                          BackendConfig (Cloud Armor + stream-safe backend timeout)
   servicemonitor.yaml     Prometheus Operator scrape (standalone — see below)
 ```
 
@@ -70,10 +71,20 @@ gcloud compute addresses describe warren-ingress --global --format='value(addres
 #    On Cloudflare the record must be DNS-only (grey cloud) — Google's cert
 #    validation fails behind the proxy.
 
-# 3. Apply the live overlay, then watch the cert go Provisioning → Active
+# 3. Provision the Cloud Armor policy the BackendConfig references. Do this
+#    BEFORE applying — the reference is inert until the policy exists, and
+#    nothing warns you about a missing one (warren-48d3).
+deploy/gcp/cloud-armor.sh --project "$PROJECT_ID"
+
+# 4. Apply the live overlay, then watch the cert go Provisioning → Active
 #    (typically 15–60 min after DNS resolves).
 kubectl -n warren get managedcertificate warren -w
 ```
+
+Grey-cloud DNS means Cloudflare provides no WAF or rate limiting, so per-IP
+rate limiting lives in Cloud Armor instead. Thresholds, the kill switch, and
+why the injection WAF rule sets are preview-only are documented in
+[`docs/RUNBOOK-K8S.md`](../../docs/RUNBOOK-K8S.md) §1.7.
 
 `/metrics` is bearer-gated like the rest of the API (the ServiceMonitor sends
 the token), so nothing operational is publicly scrapeable; `/healthz` (liveness,

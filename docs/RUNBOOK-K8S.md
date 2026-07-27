@@ -199,6 +199,136 @@ releases are cut with the default `GITHUB_TOKEN`, and GitHub suppresses
 workflow runs for GITHUB_TOKEN-created events, so that trigger would never
 fire (warren-cb81). There is no Fly.io deploy (removed in warren-b65c).
 
+### 1.7 Edge abuse control — Cloud Armor (warren-48d3)
+
+Warren has **no per-IP HTTP rate limiting in application code**. The 429s the
+app can emit are a different layer: dispatch admission (§5.5) and the event
+stream caps (`src/server/stream-limits.ts`). Volumetric L3/L7 abuse is handled
+at the load balancer by a Cloud Armor policy, so it never reaches the
+single-replica control plane's CPU.
+
+Cloudflare cannot do this job for `warren.run`: the DNS record must stay
+**DNS-only / grey-cloud** or Google's HTTP-01 `ManagedCertificate` validation
+fails (`deploy/k8s/overlays/gke/managedcertificate.yaml`). Grey-cloud means no
+Cloudflare WAF and no Cloudflare rate limiting — hence Cloud Armor.
+
+**Two halves, both required.** A Cloud Armor policy is a GCP *project*
+resource, so only the attachment is a manifest:
+
+| Half | Where | Applied by |
+|---|---|---|
+| the rules | `deploy/gcp/cloud-armor.sh` | `deploy/gcp/cloud-armor.sh --project $PROJECT_ID` (idempotent; `--dry-run` prints the calls) |
+| the attachment | `deploy/k8s/overlays/gke/backendconfig.yaml` + the Service's `cloud.google.com/backend-config` annotation | `kubectl apply -k` (the normal deploy) |
+
+Run the script **before** the first apply — the `BackendConfig` reference is
+inert until the named policy exists, and neither `kubectl apply` nor the
+Ingress controller complains about a missing one.
+
+```bash
+deploy/gcp/cloud-armor.sh --project "$PROJECT_ID"
+
+# Confirm the policy reached the LB backend (the acceptance check):
+gcloud compute backend-services list --global \
+  --format='table(name,securityPolicy)'
+```
+
+**Rules and thresholds** (`warren-armor`):
+
+| Priority | Rule | Action | Why this threshold |
+|---|---|---|---|
+| 1000 | per-IP rate limit, 600 req / 60s, 300s ban | `rate-based-ban`, exceed → `deny-429` | 10 rps sustained per IP. A first SPA load is ~10 requests, so this is ~2 orders of magnitude above a real user. Banning (not throttling) means a flood stops being evaluated request-by-request. |
+| 2000 | `protocolattack-v33-stable` sensitivity 1 | `deny-403` | matches HTTP framing (request smuggling, header injection), never a payload |
+| 2100 | `scannerdetection-v33-stable` sensitivity 1 | `deny-403` | matches known scanner UAs/paths |
+| 9000–9300 | `sqli` / `xss` / `rce` / `lfi` v33-stable | `deny-403` **`--preview`** | log-only on purpose — see below |
+
+**Why the injection rule sets are preview-only.** Warren's request bodies are
+agent prompts and rendered agent JSON: arbitrary prose, shell, SQL and HTML by
+design. A prompt that says *"drop table users"* is a legitimate dispatch.
+Enforcing `sqli`/`xss`/`rce`/`lfi` would 403 real work, so they run in preview
+to give forensic signal and a measurable false-positive rate.
+`scripts/cloud-armor.test.ts` fails if the `--preview` flag is ever dropped.
+
+**Event streams are not affected.** Two independent reasons, both worth
+re-checking after any change here:
+
+- Cloud Armor rate limiting counts **requests**, not bytes or seconds. A
+  long-lived `GET /runs/:id/events` NDJSON stream costs one request at open and
+  is never re-counted or torn down by rule 1000.
+- The GCE backend-service timeout defaults to **30s**, which *would* sever
+  every stream. `backendconfig.yaml` sets `timeoutSec: 3600`. Verify after a
+  deploy by watching a run for >30s in the UI, or:
+  `curl -N -H "Authorization: Bearer $TOK" https://$HOST/runs/$ID/events`.
+
+**Tuning.** Thresholds are env overrides on the script — re-run it to
+reconcile:
+
+```bash
+WARREN_ARMOR_RATE_LIMIT_COUNT=1200 WARREN_ARMOR_BAN_DURATION_SEC=120 \
+  deploy/gcp/cloud-armor.sh --project "$PROJECT_ID"
+```
+
+Raise the **count** rather than widening the interval when a shared egress IP
+gets banned — `--enforce-on-key=IP` groups everyone behind one NAT. And note
+that key is only correct while DNS is unproxied: if a proxy is ever put in
+front of the LB, every request keys off the proxy's address and the rule must
+move to `--enforce-on-key=XFF-IP`.
+
+**Kill switch** (fastest first):
+
+```bash
+# 1. Detach the policy from the backend entirely (~1-2 min to take effect).
+kubectl -n warren patch backendconfig warren --type=merge \
+  -p '{"spec":{"securityPolicy":{"name":""}}}'
+
+# 2. Or neutralize one rule without detaching (rule 1000 = the rate limit).
+gcloud compute security-policies rules update 1000 \
+  --security-policy=warren-armor --preview --project "$PROJECT_ID"
+
+# 3. Unban a single IP that got caught: drop its ban by lowering the duration,
+#    or allow-list it above the rate limit.
+gcloud compute security-policies rules create 500 \
+  --security-policy=warren-armor --src-ip-ranges=203.0.113.7/32 \
+  --action=allow --project "$PROJECT_ID"
+```
+
+Option 1 is a **live edit** — the next `kubectl apply -k` restores the
+reference, so a durable disable means editing `backendconfig.yaml`.
+
+**Observability.** Cloud Armor decisions ride on LB request logs, which
+`backendconfig.yaml` enables (`logging.enable: true`, full sample rate — lower
+it if log volume becomes a cost problem during a spike):
+
+```bash
+# Enforced denials
+gcloud logging read \
+  'jsonPayload.enforcedSecurityPolicy.outcome="DENY"' --limit=20 --freshness=1h
+
+# Preview-rule matches — the false-positive rate for the 9000-series
+gcloud logging read \
+  'jsonPayload.previewSecurityPolicy.outcome="DENY"' --limit=20 --freshness=1h
+```
+
+**Budget alerting.** The GCP project holds live `ANTHROPIC_API_KEY` and
+`GITHUB_TOKEN` in `warren-secrets`, and an abuse spike bills through Autopilot
+pods and Anthropic usage before anyone notices. Set a project budget alert
+once (needs the billing account id, so it is not scripted here):
+
+```bash
+gcloud billing accounts list
+gcloud billing budgets create \
+  --billing-account="$BILLING_ACCOUNT_ID" \
+  --display-name="warren monthly" \
+  --budget-amount=200USD \
+  --filter-projects="projects/$PROJECT_ID" \
+  --threshold-rule=percent=0.5 \
+  --threshold-rule=percent=0.9 \
+  --threshold-rule=percent=1.0
+```
+
+Anthropic spend is billed by Anthropic, not GCP — set a separate limit in the
+Anthropic console. Warren's own per-run cost rollup (`/analytics/cost`) is
+operator-gated and is the in-app view of the same problem.
+
 ---
 
 ## 2. Secrets
@@ -699,6 +829,11 @@ kubectl -n warren-runs describe pod run-<id>                # scheduling / OOM e
 
 # RBAC sanity
 kubectl auth can-i --as=system:serviceaccount:warren:warren create pods -n warren-runs
+
+# Edge (Cloud Armor, §1.7)
+gcloud compute backend-services list --global --format='table(name,securityPolicy)'
+gcloud compute security-policies rules list --security-policy=warren-armor
+gcloud logging read 'jsonPayload.enforcedSecurityPolicy.outcome="DENY"' --limit=20
 
 # Roll the control plane
 kubectl -n warren rollout restart deploy/warren
