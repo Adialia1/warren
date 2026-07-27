@@ -184,7 +184,7 @@ Enable the preview proxy by giving warren a host suffix it can route on:
 WARREN_PREVIEW_HOST=preview.warren.example.com
 ```
 
-Warren then matches `Host: run-<runId>.preview.warren.example.com` as a preamble before its API/UI routes and forwards to the in-sandbox port allocated at reap time. The login route (`GET /runs/:id/preview/login?token=…&redirect=…`) accepts the warren bearer in the query and issues a domain-scoped signed cookie (`warren_preview`); the proxy rejects unauthenticated browser requests with 401 (not 502). The HMAC key is derived from `WARREN_API_TOKEN`, so there's no second secret to manage. `warren doctor` warns if the token is empty or matches a placeholder.
+Warren then matches `Host: run-<runId>.preview.warren.example.com` as a preamble before its API/UI routes and forwards to the in-sandbox port allocated at reap time. The login route (`POST /runs/:id/preview/login`, optional `{redirect}` body) takes the warren bearer in the `Authorization` header and issues a domain-scoped signed cookie (`warren_preview`); the proxy rejects unauthenticated browser requests with 401 (not 502). The HMAC key is derived from `WARREN_API_TOKEN`, so there's no second secret to manage. `warren doctor` warns if the token is empty or matches a placeholder.
 
 **Wildcard DNS.** Point a wildcard CNAME at the warren box so every `run-*` subdomain resolves:
 
@@ -272,7 +272,7 @@ GET    /runs/:id                     detail incl. rendered_agent_json
 GET    /runs/:id/events?follow=1     NDJSON tail (warren log + live)
 POST   /runs/:id/steer               proxy to runtime inbox
 POST   /runs/:id/cancel              proxy to runtime cancel
-GET    /runs/:id/preview/login       issue signed-cookie + 302 (auth-exempt, ?token=)
+POST   /runs/:id/preview/login       issue signed-cookie + preview url (bearer-gated)
 POST   /runs/:id/preview/teardown    manual preview teardown (idempotent)
 
 POST   /plan-runs                    { project, planId, agent } → serial dispatch (.seeds/ only)

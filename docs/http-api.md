@@ -94,7 +94,7 @@ Total routes: **39**.
 | `POST` | `/runs/:id/finalize-result` | `postRunFinalizeResultHandler` |  |
 | `POST` | `/runs/:id/steer` | `steerRunHandler` |  |
 | `POST` | `/runs/:id/cancel` | `cancelRunHandler` |  |
-| `GET` | `/runs/:id/preview/login` | `previewLoginHandler` |  |
+| `POST` | `/runs/:id/preview/login` | `previewLoginHandler` | warren-e1b0: POST, not GET — the bearer rides the `Authorization` header like every other /runs route instead of a `?token=` query string that would land in history / Referer / proxy logs. |
 | `POST` | `/runs/:id/preview/teardown` | `previewTeardownHandler` |  |
 
 ## /version

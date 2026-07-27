@@ -250,7 +250,10 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/runs/:id/finalize-result", build: postRunFinalizeResultHandler },
 	{ method: "POST", pattern: "/runs/:id/steer", build: steerRunHandler },
 	{ method: "POST", pattern: "/runs/:id/cancel", build: cancelRunHandler },
-	{ method: "GET", pattern: "/runs/:id/preview/login", build: previewLoginHandler },
+	// warren-e1b0: POST, not GET — the bearer rides the `Authorization`
+	// header like every other /runs route instead of a `?token=` query
+	// string that would land in history / Referer / proxy logs.
+	{ method: "POST", pattern: "/runs/:id/preview/login", build: previewLoginHandler },
 	{ method: "POST", pattern: "/runs/:id/preview/teardown", build: previewTeardownHandler },
 
 	{ method: "GET", pattern: "/preview/config", build: previewConfigHandler },
@@ -261,13 +264,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/plan-runs/:id/cancel", build: cancelPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id/events", build: streamPlanRunEventsHandler },
 ];
-
-/**
- * Matches `/runs/<id>/preview/login` (the auth-exempt signed-cookie
- * handshake from SPEC §11.L). Kept module-scoped so the request gate
- * doesn't compile a regex per request.
- */
-const PREVIEW_LOGIN_PATH_RE = /^\/runs\/[^/]+\/preview\/login\/?$/;
 
 export function buildApiRoutes(deps: ServerDeps): Route[] {
 	return ROUTE_TABLE.map((entry) => ({
@@ -325,7 +321,11 @@ export function isApiPath(pathname: string): boolean {
  * Auth-required:
  *   - Every API path other than `/healthz`. `/readyz` stays gated
  *     because its body reveals which checks failed (sensitive in a
- *     misconfigured deploy).
+ *     misconfigured deploy). `POST /runs/:id/preview/login` is gated
+ *     too (warren-e1b0) — it used to be exempt so a browser could hand
+ *     the bearer over in a `?token=` query string; the handshake now
+ *     carries the bearer in the `Authorization` header like every other
+ *     `/runs/*` route, so the exemption is gone.
  */
 export function isAuthExempt(pathname: string): boolean {
 	if (pathname === "/healthz") return true;
@@ -339,11 +339,6 @@ export function isAuthExempt(pathname: string): boolean {
 	// header. Keeping it auth-exempt avoids a chicken-and-egg on the
 	// login screen.
 	if (pathname === "/version") return true;
-	// Preview login handshake (R-19 / SPEC §11.L): the browser arrives
-	// without an Authorization header and validates the bearer via
-	// `?token=<WARREN_API_TOKEN>`. The handler does its own constant-time
-	// compare, so the global gate must let the request through.
-	if (PREVIEW_LOGIN_PATH_RE.test(pathname)) return true;
 	return !isApiPath(pathname);
 }
 
