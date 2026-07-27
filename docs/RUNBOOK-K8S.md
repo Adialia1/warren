@@ -145,9 +145,12 @@ the DB URL — only the control plane does (§3, blast-radius minimization).
 `kubectl apply -k` by hand (warren-bd79). The manual flow above stays the
 break-glass fallback (and the only path for kind/k3d local dev, §1.4).
 
-- **Build + push** (`build-push` job) runs on every push to `main`, when
-  `release.yml` calls this workflow after cutting a release (`workflow_call`,
-  pinned to the released SHA), and on manual dispatch. It builds all three images
+- **Build + push** (`build-push` job) runs when `release.yml` calls this
+  workflow after cutting a release (`workflow_call`, pinned to the released
+  SHA), and on manual dispatch. There is deliberately **no push trigger**
+  (warren-8b5f): a push to `main` used to build, and the release that same
+  push kicks off called this workflow again, so every release built twice.
+  It builds all three images
   (`Dockerfile` → `warren`, `deploy/docker/Dockerfile.agent` →
   `warren-agent`, `deploy/docker/Dockerfile.workspace-init` →
   `warren-workspace-init`) with `docker buildx --platform linux/amd64`
@@ -155,11 +158,9 @@ break-glass fallback (and the only path for kind/k3d local dev, §1.4).
   each by the full commit SHA **and** `latest`, and pushes to the same
   `<region>-docker.pkg.dev/<project>/<repo>` Artifact Registry that
   `cloudbuild.yaml` targets. Layer cache is GHA-scoped per image.
-- **Deploy** (`deploy` job) runs when a caller opts in via the `deploy`
+- **Deploy** (`deploy` job) runs only when a caller opts in via the `deploy`
   input — `release.yml` sets it after publishing a release, or a manual
-  dispatch ticks it — or on a push to `k8s-migration`. A bare push to `main`
-  only builds images — it never touches the cluster. It also fails visibly
-  if the rolled-out control-plane image is not the exact released SHA. The job pulls cluster
+  dispatch ticks it. No branch deploys by itself. The job pulls cluster
   credentials (`get-gke-credentials`), then renders the gitignored
   `gke-live` overlay *on the runner* (never committed — see `.gitignore`),
   layering on the committed `gke` template and pinning all three images to
@@ -168,6 +169,12 @@ break-glass fallback (and the only path for kind/k3d local dev, §1.4).
   `rollout status` gate. This is exactly the documented `gke-live` pattern
   (`deploy/k8s/overlays/gke/kustomization.yaml` header), produced from CI
   vars instead of a hand-maintained local overlay.
+- **Post-deploy verification** closes the job with two assertions, both
+  fatal. First the rolled-out control-plane image must be the exact SHA just
+  built. Then, on the release path, `GET https://$WARREN_INGRESS_HOST/version`
+  is polled until it reports the released semver — proving the ingress
+  actually serves the new code, not just that the Deployment spec points at
+  it (warren-8b5f).
 
 Auth is **GCP Workload Identity Federation** (`google-github-actions/auth`)
 — no long-lived JSON service-account keys. A repo admin must configure:
@@ -182,7 +189,7 @@ Auth is **GCP Workload Identity Federation** (`google-github-actions/auth`)
 | var | `GKE_CLUSTER` | Autopilot cluster name (default `warren`) |
 | var | `GKE_LOCATION` | cluster location (default `GCP_REGION`) |
 | var | `WARREN_GIT_AUTHOR_EMAIL` | agent-commit author (`<id>+warren@users.noreply.github.com`); defaults to a noreply address if unset |
-| var | `WARREN_INGRESS_HOST` | optional public hostname; when set, patches the Ingress host + ManagedCertificate domain (both placeholders in the committed template) |
+| var | `WARREN_INGRESS_HOST` | public hostname; patches the Ingress host + ManagedCertificate domain (both placeholders in the committed template) and is the target of the post-deploy `/version` smoke test. Optional for a build-only dispatch; **required** on the release path, which fails without it |
 
 This is the only deploy pipeline: `release.yml`, after publishing a GitHub
 release, calls this workflow directly via `workflow_call` (passing the

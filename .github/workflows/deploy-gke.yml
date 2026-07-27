@@ -25,13 +25,16 @@ name: GKE Build & Deploy
 # cuts releases with `gh release create` under `github.token`), so a
 # release-event trigger would silently never fire — the exact regression
 # tracked in warren-cb81. release.yml invokes us with an explicit SHA instead.
+#
+# There is also NO `push` trigger (warren-8b5f). A push to main used to build
+# all three images, and the release that same push kicks off called us AGAIN —
+# two full builds per release, serialized by the concurrency group below, for
+# one commit. release.yml is now the only builder; `workflow_dispatch` is the
+# manual escape hatch. (The `k8s-migration` build-and-deploy entry went with
+# it: that branch merged in v0.10.0, and until now anyone pushing it deployed
+# straight to production.)
 
 on:
-  push:
-    # k8s-migration is the working mainline during the migration; pushes to it
-    # build AND deploy (see the deploy job's if) so warren can dogfood its own
-    # development. Drop the branch entry when the migration merges to main.
-    branches: [main, k8s-migration]
   workflow_call:
     inputs:
       sha:
@@ -67,7 +70,7 @@ env:
   GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/warren
   # The commit to build + deploy. workflow_call passes the released SHA
   # explicitly (github.sha is unreliable across a reusable-workflow boundary
-  # and for tag/release events); push + dispatch fall back to github.sha.
+  # and for tag/release events); a manual dispatch falls back to github.sha.
   TARGET_SHA: ${{ inputs.sha || github.sha }}
 
 concurrency:
@@ -185,13 +188,11 @@ jobs:
 
   deploy:
     needs: build-push
-    # Roll GKE forward when a caller (release.yml via workflow_call, or a
-    # manual dispatch) opts in, or on a push to k8s-migration. `inputs.deploy`
-    # is set for both workflow_call (release path) and workflow_dispatch; a
-    # bare push to main leaves it empty and only builds + pushes images.
-    if: >-
-      inputs.deploy ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/k8s-migration')
+    # Roll GKE forward only when the caller opts in. `inputs.deploy` is set by
+    # both entrypoints — release.yml passes true via workflow_call, a manual
+    # dispatch ticks the checkbox — so a build-only dispatch leaves the
+    # cluster alone. No branch ever deploys by itself (warren-8b5f).
+    if: inputs.deploy
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -223,6 +224,14 @@ jobs:
       # (matching the template's post-transform name); the agent + init images
       # are env vars on the Deployment, so they are overridden with a strategic
       # merge patch keyed by env `name`.
+      #
+      # NOTE on the `images:` match key below: the `warren/warren` segment is
+      # the committed gke template's own placeholder
+      # (deploy/k8s/overlays/gke/kustomization.yaml `images[0].newName`), NOT
+      # `vars.GCP_AR_REPO`. It is a literal that must equal that template
+      # value or the remap silently no-ops; `scripts/deploy-trigger.test.ts`
+      # pins the two together. The operator's real repo only ever appears in
+      # `newName`, via AR_BASE — so GCP_AR_REPO is honoured (warren-8b5f).
       - name: Render gke-live overlay pinned to ${{ github.sha }}
         env:
           SHA: ${{ env.TARGET_SHA }}
@@ -321,3 +330,45 @@ jobs:
             exit 1
           fi
           echo "Verified: warren deployment is running the released SHA ${SHA}."
+
+      # The step above proves the Deployment *spec* points at the released
+      # image. This one proves the public ingress actually serves it: GET
+      # /version is auth-exempt and returns {"version":"X.Y.Z"} straight from
+      # src/index.ts (README "Health & readiness probes"), which is exactly
+      # what the endpoint was built for and nothing used until now
+      # (warren-8b5f). Polled, because the GCE LB can keep draining old
+      # backends for a while after `rollout status` returns.
+      - name: Smoke-test /version over the ingress
+        env:
+          VERSION: ${{ inputs.version }}
+          INGRESS_HOST: ${{ vars.WARREN_INGRESS_HOST }}
+          SMOKE_ATTEMPTS: "12"
+          SMOKE_INTERVAL: "10"
+        run: |
+          set -uo pipefail
+          if [ -z "${VERSION}" ]; then
+            echo "No released version passed (build-only or manual dispatch); nothing to assert."
+            exit 0
+          fi
+          if [ -z "${INGRESS_HOST}" ]; then
+            echo "::error::WARREN_INGRESS_HOST is unset, so the rollout of v${VERSION} cannot be verified over the ingress. Set the repo variable (docs/RUNBOOK-K8S.md §1.6)."
+            exit 1
+          fi
+          URL="https://${INGRESS_HOST}/version"
+          ACTUAL=""
+          ATTEMPT=1
+          while [ "${ATTEMPT}" -le "${SMOKE_ATTEMPTS}" ]; do
+            BODY=$(curl -fsS --max-time 15 "${URL}" 2>/dev/null || true)
+            ACTUAL=$(printf '%s' "${BODY}" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            if [ "${ACTUAL}" = "${VERSION}" ]; then
+              echo "Verified: ${URL} reports v${VERSION}."
+              exit 0
+            fi
+            echo "attempt ${ATTEMPT}/${SMOKE_ATTEMPTS}: ${URL} reported '${ACTUAL:-<no response>}', want '${VERSION}'"
+            ATTEMPT=$((ATTEMPT + 1))
+            if [ "${ATTEMPT}" -le "${SMOKE_ATTEMPTS}" ]; then
+              sleep "${SMOKE_INTERVAL}"
+            fi
+          done
+          echo "::error::${URL} never reported version ${VERSION} (last saw '${ACTUAL:-<no response>}'). The rollout did not reach the ingress."
+          exit 1
