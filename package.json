@@ -59,6 +59,7 @@
 		"check:ci-parity": "bun scripts/check-ci-parity.ts",
 		"check:all": "bun scripts/check-all.ts",
 		"verify": "bun run check:all",
+		"version:bump": "bun run scripts/version-bump.ts",
 		"db:generate": "bun run db:generate:sqlite && bun run db:generate:postgres",
 		"db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
 		"db:generate:postgres": "drizzle-kit generate --config=drizzle.config.postgres.ts",
