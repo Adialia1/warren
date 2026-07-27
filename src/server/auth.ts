@@ -46,6 +46,7 @@ import type {
 	AuthOk,
 	AuthOutcome,
 	AuthProvider,
+	CapabilityName,
 	RoutePolicy,
 } from "./types.ts";
 
@@ -164,6 +165,17 @@ class PublicReadProvider implements AuthProvider {
 export function policyAllows(actor: Actor, policy: RoutePolicy): boolean {
 	if (policy === "anonymous") return true;
 	return actor.capabilities[policy];
+}
+
+/**
+ * The capability names `actor` actually holds, in the order its capability
+ * record declares them (warren-e195). Derived from the record instead of a
+ * second literal list, so a capability added to `ActorCapabilities` reaches
+ * `GET /whoami` automatically rather than silently dropping off the wire.
+ */
+export function grantedCapabilities(actor: Actor): CapabilityName[] {
+	const names = Object.keys(actor.capabilities) as CapabilityName[];
+	return names.filter((name) => actor.capabilities[name]);
 }
 
 /** Allow every request. Used by `--no-auth` / loopback-only deploys. */
