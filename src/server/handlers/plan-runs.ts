@@ -326,7 +326,7 @@ export function streamPlanRunEventsHandler(deps: ServerDeps): RouteHandler {
 		return ndjsonResponse(
 			asNdjsonStream(
 				source,
-				(row) => eventToNdjson(row),
+				(row) => eventToNdjson(row, ctx.actor),
 				ctrl,
 				() => slot.release(),
 			),
