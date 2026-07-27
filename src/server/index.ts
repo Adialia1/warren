@@ -5,11 +5,19 @@
  */
 
 export {
+	ANONYMOUS_ACTOR,
+	AUTH_KINDS,
+	type AuthEnv,
+	type AuthKind,
 	bearerAuth,
+	DEFAULT_AUTH_KIND,
 	NO_AUTH,
 	OPERATOR_ACTOR,
+	publicReadAuth,
 	type ResolveAuthOptions,
 	resolveAuth,
+	resolveAuthKind,
+	UnknownAuthProviderError,
 } from "./auth.ts";
 export {
 	type BootBridgesResult,

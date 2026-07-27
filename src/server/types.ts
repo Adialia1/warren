@@ -363,10 +363,12 @@ export interface ActorCapabilities {
 
 /**
  * Identity discriminant. `operator` is the single-user V1 caller (SPEC
- * §3.2 / §11.D) that every provider shipped today authorizes; further
- * kinds land with the providers that mint them.
+ * §3.2 / §11.D) the token provider authorizes; `anonymous` is the
+ * credential-less spectator the `WARREN_AUTH=public` provider mints
+ * (warren-851b) — it holds `readPublic` and nothing else. Further kinds
+ * land with the providers that mint them.
  */
-export type ActorKind = "operator";
+export type ActorKind = "operator" | "anonymous";
 
 /**
  * Who is making the request and what they may do. Produced by an
