@@ -2,12 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop, ExternalLink, RefreshCw, Send, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import {
-	buildPreviewLoginUrl,
-	formatPreviewUrl,
-	previewApi,
-	runsApi,
-} from "@/api/client.ts";
+import { formatPreviewUrl, previewApi, runsApi } from "@/api/client.ts";
 import type {
 	CancelRunResponse,
 	PreviewState,
@@ -377,12 +372,12 @@ function CostCard({ run }: { run: RunRow }) {
  *
  *   - `starting`  — readiness probe pending; teardown is allowed (lets
  *                    the operator abort a hung sidecar).
- *   - `live`      — proxy can route; surface an "Open Preview ↗" link
- *                    that goes through the auth-exempt login handshake
- *                    (signs a `warren_preview` cookie, 302s to the
+ *   - `live`      — proxy can route; surface an "Open ↗" button that
+ *                    runs the bearer-gated login handshake (signs a
+ *                    `warren_preview` cookie, answers with the
  *                    mode-correct target) and a teardown button. The
  *                    canonical URL is rendered as a copyable string so
- *                    operators can share it without the `?token=` query.
+ *                    operators can share it.
  *   - `failed`    — `previewFailureMessage` holds the stderr tail; no
  *                    URL, no teardown (already released).
  *   - `torn-down` — informational only; the port was released and the
@@ -406,7 +401,6 @@ function PreviewCard({ run }: { run: RunRow }) {
 	});
 	if (state === null) return null;
 	const isActive = PREVIEW_ACTIVE_STATES.includes(state);
-	const loginUrl = state === "live" ? buildPreviewLoginUrl(run.id) : null;
 	const canonicalUrl =
 		state === "live" && previewConfig.data !== undefined
 			? formatPreviewUrl(run.id, previewConfig.data, window.location.origin)
@@ -433,17 +427,7 @@ function PreviewCard({ run }: { run: RunRow }) {
 						</Badge>
 					) : null}
 				</CardTitle>
-				{loginUrl !== null ? (
-					<a
-						href={loginUrl}
-						target="_blank"
-						rel="noreferrer noopener"
-						className="inline-flex items-center gap-1 font-mono text-xs underline underline-offset-2 hover:text-(--color-primary)"
-						title="Open the live preview"
-					>
-						Open <ExternalLink className="h-3.5 w-3.5" />
-					</a>
-				) : null}
+				{state === "live" ? <PreviewOpenButton runId={run.id} /> : null}
 			</CardHeader>
 			<CardContent className="space-y-3">
 				{canonicalUrl !== null ? (
@@ -487,6 +471,58 @@ function PreviewMetaLine({
 		<div className="flex items-baseline gap-2">
 			<span className="uppercase tracking-wide text-(--color-muted-foreground)">{label}</span>
 			<span className={mono === true ? "font-mono break-all" : "font-mono"}>{value}</span>
+		</div>
+	);
+}
+
+/**
+ * "Open ↗" affordance for a live preview (warren-e1b0).
+ *
+ * This used to be an `<a href="/runs/:id/preview/login?token=…">`, which
+ * put the warren bearer in a URL — and therefore in browser history, in
+ * the `Referer` header of every preview sub-resource, and in any proxy
+ * or analytics log on the path. It is a button now: the click POSTs the
+ * bearer-gated handshake (credential in the `Authorization` header), the
+ * browser stores the `Set-Cookie` that response carries, and only then
+ * do we navigate to the mode-correct URL the server returned.
+ *
+ * The tab is opened *synchronously* inside the click handler and pointed
+ * at the target once the handshake resolves — a `window.open` issued
+ * from an async continuation is rejected by popup blockers. `opener` is
+ * nulled so the preview (untrusted, agent-authored code) can't reach
+ * back into the warren UI window; when the popup is blocked outright we
+ * fall back to navigating the current tab.
+ */
+function PreviewOpenButton({ runId }: { runId: string }) {
+	const login = useMutation({
+		mutationFn: () => runsApi.previewLogin(runId),
+	});
+	const openPreview = () => {
+		const tab = window.open("", "_blank");
+		if (tab !== null) tab.opener = null;
+		login.mutate(undefined, {
+			onSuccess: ({ url }) => {
+				if (tab !== null) tab.location.href = url;
+				else window.location.href = url;
+			},
+			onError: () => tab?.close(),
+		});
+	};
+	return (
+		<div className="flex flex-col items-end gap-1">
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={openPreview}
+				disabled={login.isPending}
+				title="Sign a preview session cookie and open the live preview"
+			>
+				{login.isPending ? "Opening…" : "Open"}
+				<ExternalLink className="h-3.5 w-3.5" />
+			</Button>
+			{login.isError ? (
+				<p className="text-xs text-(--color-destructive)">{formatError(login.error)}</p>
+			) : null}
 		</div>
 	);
 }

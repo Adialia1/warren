@@ -16,6 +16,7 @@ import type {
 	PlanRunRow,
 	PlanRunState,
 	PreviewConfigResponse,
+	PreviewLoginResponse,
 	PreviewTeardownResponse,
 	ProjectRow,
 	ReadyPlansResponse,
@@ -269,23 +270,23 @@ export const runsApi = {
 			method: "POST",
 			body: input,
 		}),
+	/**
+	 * Preview login handshake (`POST /runs/:id/preview/login`, R-19 /
+	 * SPEC §11.L, warren-8a10 / warren-edff; warren-e1b0 moved the bearer
+	 * out of the URL). The bearer rides the `Authorization` header like
+	 * every other call in this module; the server answers with a
+	 * `Set-Cookie` the browser stores for the same-origin preview surface
+	 * plus the `url` to navigate to. The server picks the target from the
+	 * deployment's `WARREN_PREVIEW_MODE` — `https://run-<id>.<host>/` in
+	 * subdomain mode, `<origin>/p/<id>/` in path mode — so callers stay
+	 * mode-agnostic.
+	 */
+	previewLogin: (id: string, input: { redirect?: string } = {}) =>
+		request<PreviewLoginResponse>(`/runs/${encodeURIComponent(id)}/preview/login`, {
+			method: "POST",
+			body: input,
+		}),
 };
-
-/**
- * Build the URL of the auth-exempt preview login handshake
- * (`GET /runs/:id/preview/login?token=...`) so the UI can render a
- * clickable link. The server redirects to the right target based on the
- * deployment's `WARREN_PREVIEW_MODE` — `https://run-<id>.<host>/` in
- * subdomain mode, `<inbound-origin>/p/<id>/` in path mode — so this URL
- * is mode-agnostic from the client's POV (R-19 / SPEC §11.L, warren-8a10
- * / warren-edff). Returns null when no bearer is cached — the link would
- * 401 without it.
- */
-export function buildPreviewLoginUrl(runId: string): string | null {
-	const token = getApiToken();
-	if (token === null || token.length === 0) return null;
-	return `/runs/${encodeURIComponent(runId)}/preview/login?token=${encodeURIComponent(token)}`;
-}
 
 /**
  * Deployment-wide preview config (R-19 / SPEC §11.L path addendum,

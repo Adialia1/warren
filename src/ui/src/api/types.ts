@@ -175,6 +175,16 @@ export interface PreviewTeardownResponse {
 	port: number | null;
 }
 
+/**
+ * Wire envelope of `POST /runs/:id/preview/login` (R-19 / SPEC §11.L,
+ * warren-e1b0). The credential-bearing half of the handshake is the
+ * `Set-Cookie` header the browser stores implicitly; `url` is the
+ * mode-correct preview target the caller navigates to afterwards.
+ */
+export interface PreviewLoginResponse {
+	url: string;
+}
+
 export interface BurrowSummary {
 	id: string;
 	workspacePath: string;
