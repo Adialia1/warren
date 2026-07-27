@@ -1,5 +1,6 @@
 import { tailRunEvents } from "../../../runs/index.ts";
 import { ndjsonResponse } from "../../response.ts";
+import { reserveEventStreamSlot } from "../../stream-limits.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { parseBoolean, parseNonNegativeInt, requireParam } from "../index.ts";
 
@@ -14,6 +15,15 @@ export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 		const sinceSeq = parseNonNegativeInt(ctx.url.searchParams.get("since"), "since");
 
 		const ctrl = bridgeAbort(ctx.request.signal);
+		// Concurrency admission (warren-25f6) — AFTER the 404 so a typo'd id
+		// never burns a slot, BEFORE any streaming work so a refusal is a fast
+		// 503 + Retry-After rather than a connection warren has to hold.
+		const slot = reserveEventStreamSlot({
+			limiter: deps.streamLimiter,
+			ctx,
+			ctrl,
+			route: "GET /runs/:id/events",
+		});
 		const source = tailRunEvents({
 			runId: id,
 			repos: { events: deps.repos.events },
@@ -22,7 +32,14 @@ export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 			...(sinceSeq !== undefined ? { sinceSeq } : {}),
 			signal: ctrl.signal,
 		});
-		return ndjsonResponse(asNdjsonStream(source, (row) => eventToNdjson(row), ctrl));
+		return ndjsonResponse(
+			asNdjsonStream(
+				source,
+				(row) => eventToNdjson(row),
+				ctrl,
+				() => slot.release(),
+			),
+		);
 	};
 }
 
@@ -40,10 +57,20 @@ export function bridgeAbort(reqSignal: AbortSignal): AbortController {
 	return ctrl;
 }
 
+/**
+ * `onClose` (warren-25f6) fires exactly once the stream is no longer
+ * attached — normal end-of-source, error, or client cancel. It carries the
+ * event-stream slot release, so it runs BEFORE each exit's
+ * `controller.close()` / `.error()`: those can themselves throw on a stream
+ * the runtime already tore down, and a leaked slot would permanently shrink
+ * the instance's capacity. `EventStreamSlot.release` is idempotent, so the
+ * overlap between these paths is harmless.
+ */
 export function asNdjsonStream<T>(
 	source: AsyncIterable<T>,
 	encode: (value: T) => string,
 	ctrl: AbortController,
+	onClose?: () => void,
 ): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
 	const iterator = source[Symbol.asyncIterator]();
@@ -52,11 +79,13 @@ export function asNdjsonStream<T>(
 			try {
 				const { done, value } = await iterator.next();
 				if (done) {
+					onClose?.();
 					controller.close();
 					return;
 				}
 				controller.enqueue(encoder.encode(encode(value)));
 			} catch (err) {
+				onClose?.();
 				if (ctrl.signal.aborted) {
 					controller.close();
 					return;
@@ -65,6 +94,7 @@ export function asNdjsonStream<T>(
 			}
 		},
 		async cancel() {
+			onClose?.();
 			ctrl.abort();
 			try {
 				await iterator.return?.(undefined);

@@ -14,6 +14,7 @@ import { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "../../plan-r
 import { cancelRun } from "../../runs/index.ts";
 import { showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { jsonResponse, ndjsonResponse } from "../response.ts";
+import { reserveEventStreamSlot } from "../stream-limits.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 import { refreshDispatchProject } from "./dispatch-refresh.ts";
 import {
@@ -305,6 +306,15 @@ export function streamPlanRunEventsHandler(deps: ServerDeps): RouteHandler {
 		const planRun = await deps.repos.planRuns.require(id);
 		const follow = parseBoolean(ctx.url.searchParams.get("follow"), "follow") ?? false;
 		const ctrl = bridgeAbort(ctx.request.signal);
+		// Same concurrency admission as the single-run twin (warren-25f6): a
+		// plan-run stream fans in every child, so it is the more expensive of
+		// the two to leave uncapped.
+		const slot = reserveEventStreamSlot({
+			limiter: deps.streamLimiter,
+			ctx,
+			ctrl,
+			route: "GET /plan-runs/:id/events",
+		});
 
 		const source = tailPlanRunEvents({
 			planRun,
@@ -313,7 +323,14 @@ export function streamPlanRunEventsHandler(deps: ServerDeps): RouteHandler {
 			follow,
 			signal: ctrl.signal,
 		});
-		return ndjsonResponse(asNdjsonStream(source, (row) => eventToNdjson(row), ctrl));
+		return ndjsonResponse(
+			asNdjsonStream(
+				source,
+				(row) => eventToNdjson(row),
+				ctrl,
+				() => slot.release(),
+			),
+		);
 	};
 }
 

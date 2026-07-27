@@ -77,6 +77,14 @@ export interface RouteContext {
 	 * off the request.
 	 */
 	readonly requestId: string;
+	/**
+	 * Socket peer address from `Bun.serve`'s `server.requestIP` (warren-25f6),
+	 * or undefined on a transport that has none (unix socket) and in tests that
+	 * build a context by hand. Behind the canonical Caddy / Ingress deploy this
+	 * is the proxy, not the caller — `eventStreamClientKey` prefers
+	 * `X-Forwarded-For` and only falls back here.
+	 */
+	readonly clientIp?: string;
 }
 
 export type RouteHandler = (ctx: RouteContext) => Response | Promise<Response>;
@@ -259,6 +267,14 @@ export interface ServerDeps {
 	 * K8s pod-phase gauge source for `GET /metrics` (pl-829f step 16); set under WARREN_RUNTIME=k8s.
 	 */
 	readonly podMetrics?: import("../runtime/k8s/pod-metrics.ts").PodMetricsSource;
+	/**
+	 * Concurrency admission for the two NDJSON event-stream routes
+	 * (warren-25f6). `bootServer` always wires one from
+	 * `loadEventStreamLimitsFromEnv()`; tests may omit, in which case the
+	 * streams are uncapped. Also feeds the `warren_event_streams` gauge on
+	 * `GET /metrics`. See `src/server/stream-limits.ts`.
+	 */
+	readonly streamLimiter?: import("./stream-limits.ts").EventStreamLimiter;
 }
 
 /**

@@ -48,6 +48,7 @@ import {
 	runtimeBackendStatusFor,
 } from "../runtime/errors.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
+import { EventStreamCapacityError } from "./stream-limits.ts";
 import type { ErrorEnvelope } from "./types.ts";
 
 export interface RenderedError {
@@ -84,6 +85,18 @@ export function renderError(err: unknown, requestId?: string): RenderedError {
 		const envelope = buildEnvelope(err.code, err.message, err.recoveryHint);
 		return {
 			status: 429,
+			envelope,
+			headers: { "Retry-After": String(err.retryAfterSeconds) },
+		};
+	}
+	if (err instanceof EventStreamCapacityError) {
+		// 503 + Retry-After (warren-25f6): the event-stream concurrency cap is
+		// full. 503 rather than 429 — the caller isn't being rate-limited on a
+		// request budget, a finite resource (open connections on a
+		// single-replica control plane) is temporarily exhausted.
+		const envelope = buildEnvelope(err.code, err.message, err.recoveryHint);
+		return {
+			status: 503,
 			envelope,
 			headers: { "Retry-After": String(err.retryAfterSeconds) },
 		};
