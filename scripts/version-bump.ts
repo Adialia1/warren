@@ -104,27 +104,47 @@ export function rewriteIndexVersion(text: string, current: string, next: string)
 	return text.replace(needle, `const VERSION = "${next}"`);
 }
 
+const README_STATUS_VERSION_RE = /`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`/;
+
+export interface ReadmeStatusVersion {
+	/** Offset of the opening backtick within the full README text. */
+	readonly start: number;
+	/** Offset one past the closing backtick. */
+	readonly end: number;
+	/** The bare semver, backticks stripped. */
+	readonly version: string;
+}
+
 /**
- * Rewrite the semver in README's `## Status` paragraph.
+ * Locate the semver in README's `## Status` paragraph: the first
+ * backticked semver after the heading.
  *
- * Matched positionally (first backticked semver after the heading) rather
- * than by the current value, so a README that has already drifted — as it
- * had at warren-16b5, reading `0.9.10` against an actual `0.10.1` — still
- * gets corrected instead of failing the bump.
+ * Matched positionally rather than by the current value, so a README
+ * that has already drifted — as it had at warren-16b5, reading `0.9.10`
+ * against an actual `0.10.1` — still gets corrected instead of failing
+ * the bump.
+ *
+ * Shared with `scripts/check-version-sync.ts` (warren-0210) so the
+ * bumper and the gate can never disagree about where the version lives.
  */
-export function rewriteReadmeStatusVersion(text: string, next: string): string {
+export function locateReadmeStatusVersion(text: string): ReadmeStatusVersion {
 	const heading = /^## Status\s*$/m.exec(text);
 	if (!heading) {
 		throw new Error("Could not find a `## Status` heading in README.md");
 	}
 	const sectionStart = heading.index + heading[0].length;
-	const rest = text.slice(sectionStart);
-	const versionRe = /`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`/;
-	const found = versionRe.exec(rest);
+	const found = README_STATUS_VERSION_RE.exec(text.slice(sectionStart));
 	if (!found) {
 		throw new Error("Could not find a backticked semver in README.md's `## Status` section");
 	}
-	return text.slice(0, sectionStart) + rest.replace(versionRe, `\`${next}\``);
+	const start = sectionStart + found.index;
+	return { start, end: start + found[0].length, version: found[0].slice(1, -1) };
+}
+
+/** Rewrite the semver in README's `## Status` paragraph. */
+export function rewriteReadmeStatusVersion(text: string, next: string): string {
+	const found = locateReadmeStatusVersion(text);
+	return `${text.slice(0, found.start)}\`${next}\`${text.slice(found.end)}`;
 }
 
 /**
