@@ -27,6 +27,7 @@ import { bindRequestIdLogger, extractOrGenerateRequestId, stampRequestId } from 
 import { jsonResponse } from "./response.ts";
 import { matchRoute, pathExists } from "./router.ts";
 import type {
+	Actor,
 	AuthDenied,
 	AuthProvider,
 	Logger,
@@ -226,9 +227,14 @@ async function handleRequest(
 		}
 	}
 
+	// The admitted caller, threaded onto the RouteContext below (warren-1ff0).
+	// Stays undefined on auth-exempt paths — the gate never ran there, so
+	// there is nobody to speak for.
+	let actor: Actor | undefined;
 	if (!isAuthExempt(url.pathname)) {
 		const result = auth.authorize(request);
 		if (!result.ok) return denyResponse(result, logger, request, url);
+		actor = result.actor;
 	}
 
 	const match = matchRoute(routes, request.method, url.pathname);
@@ -240,6 +246,7 @@ async function handleRequest(
 			logger,
 			requestId,
 			...(clientIp !== undefined ? { clientIp } : {}),
+			...(actor !== undefined ? { actor } : {}),
 		};
 		try {
 			return await match.route.handler(ctx);

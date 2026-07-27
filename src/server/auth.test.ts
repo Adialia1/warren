@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "../core/errors.ts";
-import { bearerAuth, NO_AUTH, resolveAuth } from "./auth.ts";
+import { bearerAuth, NO_AUTH, OPERATOR_ACTOR, resolveAuth } from "./auth.ts";
 
 function req(authorization?: string): Request {
 	const headers: Record<string, string> = {};
@@ -58,6 +58,32 @@ describe("bearerAuth", () => {
 
 	test("throws on construction with empty token", () => {
 		expect(() => bearerAuth("")).toThrow();
+	});
+});
+
+describe("actor (warren-1ff0)", () => {
+	test("NO_AUTH authorizes the full-capability operator actor", () => {
+		const result = NO_AUTH.authorize(req());
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.actor).toEqual(OPERATOR_ACTOR);
+	});
+
+	test("bearerAuth authorizes the same actor a valid token has always got", () => {
+		const result = bearerAuth("s3cret").authorize(req("Bearer s3cret"));
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.actor).toEqual(OPERATOR_ACTOR);
+	});
+
+	test("the operator actor holds every capability", () => {
+		expect(OPERATOR_ACTOR.kind).toBe("operator");
+		expect(OPERATOR_ACTOR.capabilities).toEqual({
+			readPublic: true,
+			readOperator: true,
+			dispatch: true,
+			admin: true,
+		});
 	});
 });
 

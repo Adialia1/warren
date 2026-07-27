@@ -4,7 +4,13 @@
  * without rippling out to call sites.
  */
 
-export { bearerAuth, NO_AUTH, type ResolveAuthOptions, resolveAuth } from "./auth.ts";
+export {
+	bearerAuth,
+	NO_AUTH,
+	OPERATOR_ACTOR,
+	type ResolveAuthOptions,
+	resolveAuth,
+} from "./auth.ts";
 export {
 	type BootBridgesResult,
 	bootBridges,
@@ -44,6 +50,9 @@ export { jsonResponse, ndjsonResponse } from "./response.ts";
 export { compilePattern, matchRoute, pathExists } from "./router.ts";
 export { startServer } from "./server.ts";
 export type {
+	Actor,
+	ActorCapabilities,
+	ActorKind,
 	AuthDenied,
 	AuthOk,
 	AuthOutcome,

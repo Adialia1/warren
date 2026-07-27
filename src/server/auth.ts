@@ -6,6 +6,12 @@
  * exists so a future multi-user landing (per-token scopes, OIDC, ...)
  * can plug in additively without rewriting handlers.
  *
+ * A successful `authorize` returns an `Actor` — an identity discriminant
+ * plus a capability set (warren-1ff0) — which the server threads onto
+ * `RouteContext.actor`. Both providers here return the full-capability
+ * `OPERATOR_ACTOR`, so the seam is wired without changing what anyone is
+ * allowed to do; a narrower provider is what makes it earn its keep.
+ *
  * `--no-auth` (loopback-only) is the dev-loop escape hatch. The CLI
  * plumbs it through `resolveAuth({ noAuth: true })`; the server itself
  * never inspects the flag (auth is opaque to dispatch).
@@ -18,9 +24,35 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { ValidationError } from "../core/errors.ts";
-import type { AuthDenied, AuthOk, AuthOutcome, AuthProvider } from "./types.ts";
+import type {
+	Actor,
+	ActorCapabilities,
+	AuthDenied,
+	AuthOk,
+	AuthOutcome,
+	AuthProvider,
+} from "./types.ts";
 
-const ALLOW: AuthOk = { ok: true };
+/** Every capability. The V1 posture: an admitted caller may do anything. */
+const FULL_CAPABILITIES: ActorCapabilities = Object.freeze({
+	readPublic: true,
+	readOperator: true,
+	dispatch: true,
+	admin: true,
+});
+
+/**
+ * The single-user V1 caller (warren-1ff0). Both providers below authorize
+ * exactly this actor, so widening `AuthOk` grants nobody anything new — a
+ * provider that grants a narrower set is the point of the seam, not this
+ * constant.
+ */
+export const OPERATOR_ACTOR: Actor = Object.freeze({
+	kind: "operator",
+	capabilities: FULL_CAPABILITIES,
+});
+
+const ALLOW: AuthOk = Object.freeze({ ok: true, actor: OPERATOR_ACTOR });
 
 class NoAuthProvider implements AuthProvider {
 	authorize(): AuthOutcome {
