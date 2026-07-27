@@ -21,7 +21,7 @@
 
 import { existsSync, unlinkSync } from "node:fs";
 import { NO_AUTH } from "./auth.ts";
-import { methodNotAllowed, notFound, renderError } from "./errors.ts";
+import { errorLogFields, methodNotAllowed, notFound, renderError } from "./errors.ts";
 import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers/index.ts";
 import { bindRequestIdLogger, extractOrGenerateRequestId, stampRequestId } from "./request-id.ts";
 import { jsonResponse } from "./response.ts";
@@ -206,9 +206,9 @@ async function handleRequest(
 			const proxied = await previewProxy(request, url);
 			if (proxied !== null) return proxied;
 		} catch (err) {
-			const rendered = renderError(err);
+			const rendered = renderError(err, requestId);
 			logger.error(
-				{ err, route: "preview proxy", status: rendered.status },
+				{ ...errorLogFields(err), route: "preview proxy", status: rendered.status },
 				"server: preview proxy threw",
 			);
 			return jsonResponse(
@@ -236,10 +236,10 @@ async function handleRequest(
 		try {
 			return await match.route.handler(ctx);
 		} catch (err) {
-			const rendered = renderError(err);
+			const rendered = renderError(err, requestId);
 			logger.error(
 				{
-					err,
+					...errorLogFields(err),
 					route: `${match.route.method} ${match.route.pattern}`,
 					status: rendered.status,
 				},
@@ -287,9 +287,9 @@ async function handleRequest(
 		try {
 			return await uiFallback.handler(ctx);
 		} catch (err) {
-			const rendered = renderError(err);
+			const rendered = renderError(err, requestId);
 			logger.error(
-				{ err, route: "GET (ui fallback)", status: rendered.status },
+				{ ...errorLogFields(err), route: "GET (ui fallback)", status: rendered.status },
 				"server: ui handler threw",
 			);
 			return jsonResponse(

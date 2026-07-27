@@ -108,6 +108,13 @@ const cases: ReadonlyArray<{ name: string; produce: () => Snapshot }> = [
 		name: "internal-error-from-non-error",
 		produce: () => snapshot(renderError("string thrown")),
 	},
+	{
+		// warren-4385: the wire shape an unhandled 500 takes inside the server —
+		// fixed message, correlation id in the hint, thrown message nowhere.
+		name: "internal-error-with-request-id",
+		produce: () =>
+			snapshot(renderError(new Error("ENOENT /data/warren/projects/acme"), "req-golden-1")),
+	},
 ];
 
 describe("response envelopes — __golden__ snapshots", () => {

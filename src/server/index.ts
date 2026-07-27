@@ -21,6 +21,7 @@ export {
 	type ServerConfig,
 } from "./config.ts";
 export {
+	INTERNAL_ERROR_MESSAGE,
 	methodNotAllowed,
 	notFound,
 	notImplemented,
