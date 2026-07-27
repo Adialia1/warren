@@ -202,10 +202,11 @@ fire (warren-cb81). There is no Fly.io deploy (removed in warren-b65c).
 ### 1.7 Edge abuse control — Cloud Armor (warren-48d3)
 
 Warren has **no per-IP HTTP rate limiting in application code**. The 429s the
-app can emit are a different layer: dispatch admission (§5.5) and the event
-stream caps (`src/server/stream-limits.ts`). Volumetric L3/L7 abuse is handled
-at the load balancer by a Cloud Armor policy, so it never reaches the
-single-replica control plane's CPU.
+app can emit belong to a different layer: dispatch admission (§5.5) and the
+event stream caps (`src/server/stream-limits.ts`).
+
+A Cloud Armor policy on the load balancer absorbs volumetric L3/L7 abuse, so
+it never reaches the single-replica control plane's CPU.
 
 Cloudflare cannot do this job for `warren.run`: the DNS record must stay
 **DNS-only / grey-cloud** or Google's HTTP-01 `ManagedCertificate` validation
@@ -244,6 +245,7 @@ gcloud compute backend-services list --global \
 **Why the injection rule sets are preview-only.** Warren's request bodies are
 agent prompts and rendered agent JSON: arbitrary prose, shell, SQL and HTML by
 design. A prompt that says *"drop table users"* is a legitimate dispatch.
+
 Enforcing `sqli`/`xss`/`rce`/`lfi` would 403 real work, so they run in preview
 to give forensic signal and a measurable false-positive rate.
 `scripts/cloud-armor.test.ts` fails if the `--preview` flag is ever dropped.
@@ -269,7 +271,7 @@ WARREN_ARMOR_RATE_LIMIT_COUNT=1200 WARREN_ARMOR_BAN_DURATION_SEC=120 \
 
 Raise the **count** rather than widening the interval when a shared egress IP
 gets banned — `--enforce-on-key=IP` groups everyone behind one NAT. And note
-that key is only correct while DNS is unproxied: if a proxy is ever put in
+that key is only correct while DNS stays unproxied: if a proxy ever sits in
 front of the LB, every request keys off the proxy's address and the rule must
 move to `--enforce-on-key=XFF-IP`.
 
@@ -325,7 +327,7 @@ gcloud billing budgets create \
   --threshold-rule=percent=1.0
 ```
 
-Anthropic spend is billed by Anthropic, not GCP — set a separate limit in the
+Anthropic bills its own spend, not GCP — set a separate limit in the
 Anthropic console. Warren's own per-run cost rollup (`/analytics/cost`) is
 operator-gated and is the in-app view of the same problem.
 
