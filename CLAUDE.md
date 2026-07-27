@@ -282,16 +282,26 @@ cap) reach a human.
 
 ## Version Management
 
-Version lives in two places — kept in sync manually and verified by the
-release workflow:
+The version lives in four places, all of them rewritten by
+`bun run version:bump <major|minor|patch|X.Y.Z>`
+(`scripts/version-bump.ts`, warren-16b5):
 
 - `package.json` — `"version"` field
 - `src/index.ts` — `export const VERSION = "X.Y.Z"`
+- `docs/openapi.yaml` — `info.version`, refreshed by the script re-running
+  `bun run gen:openapi` after the package.json rewrite
+- `README.md` — the semver in the `## Status` paragraph
 
-There is **no** `bun run version:bump` script in this repo (unlike burrow);
-edit both files directly. `.github/workflows/release.yml` fails the release
-job if they disagree, then auto-tags `v$VERSION` and creates a GitHub release
-from the matching `CHANGELOG.md` section.
+The script also drafts an `[Unreleased]` block into `CHANGELOG.md` from
+`git log <last-tag>..HEAD`, fenced by `<!-- version-bump:draft -->`
+markers. That draft is **assistive only** — CHANGELOG curation stays
+human and nothing in CI gates on it; edit it down and delete the markers
+before releasing. Every rewrite is computed before any file is written,
+and a failure (including a failed `gen:openapi`) rolls all of them back.
+
+`.github/workflows/release.yml` fails the release job if `package.json`
+and `src/index.ts` disagree, then auto-tags `v$VERSION` and creates a
+GitHub release from the matching `CHANGELOG.md` section.
 
 ## Git identities (Article VII)
 

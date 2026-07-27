@@ -217,16 +217,22 @@ with lint warnings; fix at write time or promote to error in `biome.json`.
 
 ## Version management
 
-The version lives in **two places**, kept in sync manually and verified
-by the release workflow:
+The version lives in **four places**, all rewritten by
+`bun run version:bump <major|minor|patch|X.Y.Z>`
+(`scripts/version-bump.ts`):
 
 - `package.json` — `"version"` field
 - `src/index.ts` — `export const VERSION = "X.Y.Z"`
+- `docs/openapi.yaml` — `info.version` (the script re-runs `gen:openapi`)
+- `README.md` — the semver in the `## Status` paragraph
 
-There is no `bun run version:bump` in this repo — edit both files
-directly. `.github/workflows/release.yml` fails the release job if they
-disagree, then auto-tags `v$VERSION` and creates a GitHub release from
-the matching `CHANGELOG.md` section.
+It also drafts an `[Unreleased]` block into `CHANGELOG.md` from
+`git log <last-tag>..HEAD`, fenced by `<!-- version-bump:draft -->`
+markers — assistive only, nothing gates on it; curate it and delete the
+markers before releasing. All rewrites roll back together on failure.
+`.github/workflows/release.yml` fails the release job if `package.json`
+and `src/index.ts` disagree, then auto-tags `v$VERSION` and creates a
+GitHub release from the matching `CHANGELOG.md` section.
 
 ## Per-project config (`.warren/config.yaml`)
 
