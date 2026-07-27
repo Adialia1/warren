@@ -291,6 +291,13 @@ export interface ServerDeps {
 	 * `GET /metrics`. See `src/server/stream-limits.ts`.
 	 */
 	readonly streamLimiter?: import("./stream-limits.ts").EventStreamLimiter;
+	/**
+	 * Orgs `POST /projects` may register (warren-ce9b). `bootServer` wires
+	 * this ONLY under `WARREN_AUTH=public`, from
+	 * `WARREN_PUBLIC_ORG_ALLOWLIST`; absent (token mode, tests) ⇒ no org
+	 * restriction. See `src/server/public-allowlist.ts`.
+	 */
+	readonly publicOrgAllowlist?: import("./public-allowlist.ts").PublicOrgAllowlist;
 }
 
 /**

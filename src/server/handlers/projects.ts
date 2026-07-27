@@ -19,6 +19,7 @@ import {
 	loadWarrenConfig,
 } from "../../warren-config/index.ts";
 import { isPublicOnly, pickFields } from "../projection.ts";
+import { assertGitUrlAllowlisted } from "../public-allowlist.ts";
 import { jsonResponse } from "../response.ts";
 import type { Actor, RouteHandler, ServerDeps } from "../types.ts";
 import {
@@ -87,6 +88,10 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 		const body = await readJsonBody(ctx);
 		const gitUrl = requireString(body, "gitUrl");
 		const defaultBranch = optionalString(body, "defaultBranch");
+		// warren-ce9b: on a public instance only allowlisted orgs may ever be
+		// registered — refused here, BEFORE addProject clones anything. No-op
+		// under `WARREN_AUTH=token` (deps.publicOrgAllowlist is absent).
+		assertGitUrlAllowlisted(deps.publicOrgAllowlist, gitUrl);
 		const project = await addProject({
 			repo: deps.repos.projects,
 			config: deps.projectsConfig,
