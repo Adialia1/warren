@@ -101,6 +101,13 @@ export type RouteHandler = (ctx: RouteContext) => Response | Promise<Response>;
 export interface Route {
 	readonly method: HttpMethod;
 	readonly pattern: string;
+	/**
+	 * What the route demands of its caller (warren-b875). Enforced ONCE, in
+	 * `handleRequest` — handlers never re-check. Required, so a route added
+	 * without a declared policy is a typecheck failure rather than a
+	 * silently-open surface.
+	 */
+	readonly policy: RoutePolicy;
 	readonly handler: RouteHandler;
 }
 
@@ -360,6 +367,29 @@ export interface ActorCapabilities {
 	/** Mutate instance-level state — register projects, triggers, config. */
 	readonly admin: boolean;
 }
+
+/**
+ * One capability name. Derived from `ActorCapabilities` rather than
+ * re-listed, so a capability added there is automatically a legal route
+ * policy and the two vocabularies can't drift.
+ */
+export type CapabilityName = keyof ActorCapabilities;
+
+/**
+ * What a route demands of its caller (warren-b875). Every `ROUTE_TABLE`
+ * entry declares exactly one; there is no default and no fallthrough.
+ *
+ * `anonymous` is the only value that isn't a capability: it means the auth
+ * gate never runs for that path at all (`isAuthExempt` is derived from it),
+ * so the route answers a credential-less caller in EVERY auth mode —
+ * liveness probes and the version string the login screen reads before the
+ * user has a token. Treat it as strictly wider than `readPublic`, which
+ * still requires the bearer under the default `WARREN_AUTH=token`.
+ *
+ * Every other value names the capability the admitted actor must hold; the
+ * gate refuses with 403 when it doesn't.
+ */
+export type RoutePolicy = "anonymous" | CapabilityName;
 
 /**
  * Identity discriminant. `operator` is the single-user V1 caller (SPEC

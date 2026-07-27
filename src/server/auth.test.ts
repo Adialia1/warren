@@ -6,6 +6,7 @@ import {
 	DEFAULT_AUTH_KIND,
 	NO_AUTH,
 	OPERATOR_ACTOR,
+	policyAllows,
 	publicReadAuth,
 	resolveAuth,
 	resolveAuthKind,
@@ -276,5 +277,25 @@ describe("resolveAuth backend selection (warren-851b)", () => {
 			env: { WARREN_API_TOKEN: "s3cret", WARREN_AUTH: "public" },
 		});
 		expect(provider.authorize(req()).ok).toBe(false);
+	});
+});
+
+describe("policyAllows (warren-b875)", () => {
+	test("anonymous demands nothing of either actor", () => {
+		expect(policyAllows(ANONYMOUS_ACTOR, "anonymous")).toBe(true);
+		expect(policyAllows(OPERATOR_ACTOR, "anonymous")).toBe(true);
+	});
+
+	test("the operator clears every capability", () => {
+		for (const policy of ["readPublic", "readOperator", "dispatch", "admin"] as const) {
+			expect(policyAllows(OPERATOR_ACTOR, policy)).toBe(true);
+		}
+	});
+
+	test("the spectator clears readPublic and nothing else", () => {
+		expect(policyAllows(ANONYMOUS_ACTOR, "readPublic")).toBe(true);
+		for (const policy of ["readOperator", "dispatch", "admin"] as const) {
+			expect(policyAllows(ANONYMOUS_ACTOR, policy)).toBe(false);
+		}
 	});
 });

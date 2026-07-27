@@ -14,6 +14,10 @@
  * `ANONYMOUS_ACTOR` (`readPublic` and nothing else), a token holder still
  * gets the operator, so one deployment serves spectators and its operator.
  *
+ * What that actor may then reach is `policyAllows` (warren-b875) applied to
+ * the route's declared `RoutePolicy` — the capability check the server's
+ * request gate runs once per matched route.
+ *
  * Which backend a process runs is resolved ONCE at boot from `WARREN_AUTH`
  * (`resolveAuthKind`), exactly like `WARREN_RUNTIME` in
  * `src/runtime/registry.ts`: unset/blank → `token` (the default, so the
@@ -42,6 +46,7 @@ import type {
 	AuthOk,
 	AuthOutcome,
 	AuthProvider,
+	RoutePolicy,
 } from "./types.ts";
 
 /** Every capability. The V1 posture: an admitted caller may do anything. */
@@ -148,6 +153,17 @@ class PublicReadProvider implements AuthProvider {
 		if (request.headers.get("authorization") === null) return ALLOW_ANONYMOUS;
 		return this.operator.authorize(request);
 	}
+}
+
+/**
+ * Does `actor` satisfy `policy`? The whole authorization decision, in one
+ * expression (warren-b875): `anonymous` demands nothing, every other policy
+ * names the capability flag the actor must carry. The gate in `server.ts`
+ * calls this once per matched route; no handler re-checks.
+ */
+export function policyAllows(actor: Actor, policy: RoutePolicy): boolean {
+	if (policy === "anonymous") return true;
+	return actor.capabilities[policy];
 }
 
 /** Allow every request. Used by `--no-auth` / loopback-only deploys. */

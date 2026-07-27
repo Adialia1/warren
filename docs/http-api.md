@@ -89,7 +89,7 @@ Total routes: **39**.
 | `POST` | `/runs` | `createRunHandler` |  |
 | `GET` | `/runs/:id` | `getRunHandler` |  |
 | `GET` | `/runs/:id/events` | `streamRunEventsHandler` |  |
-| `GET` | `/runs/:id/inbox` | `pollRunInboxHandler` | warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs route; the pod carries WARREN_API_TOKEN. |
+| `GET` | `/runs/:id/inbox` | `pollRunInboxHandler` | warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs route; the pod carries WARREN_API_TOKEN. Destructive on read (it claims unread messages), so it is operator-only (warren-b875). |
 | `GET` | `/runs/:id/finalize-intent` | `getRunFinalizeIntentHandler` | warren-0d35: the in-pod finalize callback for the K8s backend — the pod fetches the reap intent, runs the workspace-dependent half in place, and POSTs the FinalizeResult back. Bearer-gated; the pod carries WARREN_API_TOKEN. |
 | `POST` | `/runs/:id/finalize-result` | `postRunFinalizeResultHandler` |  |
 | `POST` | `/runs/:id/steer` | `steerRunHandler` |  |
