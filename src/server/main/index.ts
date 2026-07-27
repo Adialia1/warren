@@ -55,6 +55,7 @@ import { bootBridges } from "../bridges.ts";
 import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
+import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
 import type { AuthProvider, ServeHandle } from "../types.ts";
 import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
@@ -364,6 +365,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		previewLaunchConfig,
 		previewEvictionConfig,
 		workspaceGcTtlMs: workspaceGcConfig.ttlMs,
+		// Event-stream concurrency caps (warren-25f6). Parsed here so a bad
+		// knob refuses the boot instead of surfacing on someone's first stream.
+		eventStreamLimits: loadEventStreamLimitsFromEnv(),
 		previewAuth,
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		sdBinary: schedulerConfig.sdBinary,

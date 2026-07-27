@@ -67,7 +67,7 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 	const idleTimeout = opts.idleTimeout ?? DEFAULT_IDLE_TIMEOUT_SECONDS;
 	const previewProxy = opts.previewProxy;
 
-	const fetchHandler = async (request: Request): Promise<Response> => {
+	const fetchHandler = async (request: Request, self: ServeServer): Promise<Response> => {
 		// X-Request-ID middleware (warren-30af / pl-7b06 step 19): mint or
 		// adopt a correlation id, thread it through the handler pipeline,
 		// and stamp it onto every outgoing response — regardless of which
@@ -76,6 +76,11 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 		const requestId = extractOrGenerateRequestId(request);
 		const requestLogger = bindRequestIdLogger(logger, requestId);
 		const startedAt = performance.now();
+		// Socket peer address for the event-stream per-client cap (warren-25f6).
+		// Null on the unix transport, and only ever the proxy behind the
+		// canonical Caddy / Ingress deploy — `eventStreamClientKey` layers
+		// `X-Forwarded-For` on top of it.
+		const clientIp = self.requestIP(request)?.address;
 		const response = await handleRequest(
 			request,
 			routes,
@@ -83,6 +88,7 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 			requestLogger,
 			previewProxy,
 			requestId,
+			clientIp,
 		);
 		// Access log (warren-26c2 / pl-f700 step 4): one info line per
 		// request. request_id is already bound onto requestLogger, so the
@@ -155,7 +161,7 @@ function buildAllRoutes(deps: ServerDeps): Route[] {
 function bindTcp(
 	hostname: string,
 	port: number,
-	fetch: (req: Request) => Promise<Response>,
+	fetch: (req: Request, self: ServeServer) => Promise<Response>,
 	idleTimeout: number,
 ): ServeServer {
 	return Bun.serve({ hostname, port, fetch, idleTimeout });
@@ -163,7 +169,7 @@ function bindTcp(
 
 function bindUnix(
 	path: string,
-	fetch: (req: Request) => Promise<Response>,
+	fetch: (req: Request, self: ServeServer) => Promise<Response>,
 	idleTimeout: number,
 ): ServeServer {
 	if (existsSync(path)) {
@@ -194,6 +200,7 @@ async function handleRequest(
 	logger: Logger,
 	previewProxy: PreviewProxyHandler | undefined,
 	requestId: string,
+	clientIp: string | undefined,
 ): Promise<Response> {
 	const url = new URL(request.url);
 
@@ -232,6 +239,7 @@ async function handleRequest(
 			params: match.params,
 			logger,
 			requestId,
+			...(clientIp !== undefined ? { clientIp } : {}),
 		};
 		try {
 			return await match.route.handler(ctx);
