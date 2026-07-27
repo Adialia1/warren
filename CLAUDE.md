@@ -160,7 +160,7 @@ From the repo root (server + supervisor + CLI):
 ```bash
 bun test                      # Run all tests
 bun test src/foo.test.ts      # Run a single test file
-bun run lint                  # biome check --error-on-warnings .
+bun run lint                  # biome + burrow-boundary + version-sync guards
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
 ```
@@ -302,6 +302,20 @@ and a failure (including a failed `gen:openapi`) rolls all of them back.
 `.github/workflows/release.yml` fails the release job if `package.json`
 and `src/index.ts` disagree, then auto-tags `v$VERSION` and creates a
 GitHub release from the matching `CHANGELOG.md` section.
+
+That release-time check only ever compared two of the four sites, on the
+release branch, so the README drifted two releases and the openapi
+version drifted invisibly. `bun run check:version-sync`
+(`scripts/check-version-sync.ts`, warren-0210) closes that: it asserts on
+every PR that all four version sites agree, and — same drift class — that
+the `@os-eco/burrow-cli` pin agrees across the `Dockerfile` global
+install, the `package.json` dependency range, and every burrow-cli
+mention in the README. The README locator is imported from
+`version-bump.ts` so the gate and the bumper can never disagree about
+where the version lives. Because the canonical `check:all` gate
+vocabulary is frozen, it is chained into `bun run lint` (alongside
+`scripts/check-burrow-boundary.ts`) instead of getting its own manifest
+slot.
 
 ## Git identities (Article VII)
 

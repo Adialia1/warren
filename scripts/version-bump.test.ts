@@ -8,6 +8,7 @@ import {
 	DRAFT_END,
 	DRAFT_START,
 	draftUnreleasedSection,
+	locateReadmeStatusVersion,
 	parseChangelogEntries,
 	resolveNextVersion,
 	rewriteIndexVersion,
@@ -135,6 +136,23 @@ describe("rewriteIndexVersion", () => {
 		const indexText = readFileSync(resolve(REPO_ROOT, "src/index.ts"), "utf8");
 		expect(rewriteIndexVersion(indexText, current, "9.9.9")).toContain(
 			'export const VERSION = "9.9.9"',
+		);
+	});
+});
+
+describe("locateReadmeStatusVersion", () => {
+	test("returns the bare semver and the offsets of its backticked span", () => {
+		const text = "# warren\n\n## Status\n\nStable (`0.10.1`), running on GKE.\n";
+		const found = locateReadmeStatusVersion(text);
+		expect(found.version).toBe("0.10.1");
+		expect(text.slice(found.start, found.end)).toBe("`0.10.1`");
+	});
+
+	test("agrees with the real README — the locator check:version-sync imports", () => {
+		const readme = readFileSync(resolve(REPO_ROOT, "README.md"), "utf8");
+		const pkgText = readFileSync(resolve(REPO_ROOT, "package.json"), "utf8");
+		expect(locateReadmeStatusVersion(readme).version).toBe(
+			(JSON.parse(pkgText) as { version: string }).version,
 		);
 	});
 });

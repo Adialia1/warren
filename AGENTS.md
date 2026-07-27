@@ -50,7 +50,7 @@ bun run test:coverage         # bun test --coverage (text + lcov -> coverage/)
 bun run check:coverage        # tests + coverage + ratchet enforcement
 bun run report:test-timing    # print slowest suites/tests from junit.xml
 bun run report:quality-metrics # print code-quality metrics summary (coverage + complexity + ratchets)
-bun run lint                  # biome check --error-on-warnings .
+bun run lint                  # biome + burrow-boundary + version-sync guards
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
 ```
@@ -233,6 +233,15 @@ markers before releasing. All rewrites roll back together on failure.
 `.github/workflows/release.yml` fails the release job if `package.json`
 and `src/index.ts` disagree, then auto-tags `v$VERSION` and creates a
 GitHub release from the matching `CHANGELOG.md` section.
+
+`bun run check:version-sync` (warren-0210, `scripts/check-version-sync.ts`)
+asserts on every PR — not just at release — that all four sites agree, and
+that the `@os-eco/burrow-cli` pin agrees across `Dockerfile`,
+`package.json` and the README. It shares the README locator with
+`scripts/version-bump.ts`, so the gate and the bumper can never disagree about
+where the version lives. It is chained into `bun run lint` rather than
+registered as its own gate, because the canonical `check:all` manifest is
+frozen.
 
 ## Per-project config (`.warren/config.yaml`)
 
