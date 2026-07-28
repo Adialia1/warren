@@ -26,7 +26,6 @@
 		"src/ui/README.md"
 	],
 	"budgets": {
-		"README.md": 79,
 		"SPEC.md": 583,
 		"ROADMAP.md": 360,
 		"ACCEPTANCE.md": 31,
