@@ -10,11 +10,27 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.12.2] — 2026-07-28
+
+**This is the first buildable 0.12 release.** `v0.12.0` and `v0.12.1`
+are tagged but have no container image — each hit a different build
+failure. Pin this one. The application code is identical to 0.12.0.
+
+### Fixed
+
+- **`fix(deps)`** — the root `bun.lock` is regenerated to agree with
+  `package.json` (warren-1841). Dependabot raised `jscpd` to ^5.0.12 and
+  `typescript` to ^7.0.2, but the lockfile still carried ^4.2.4 and
+  ^6.0.3, so the image's `bun install --frozen-lockfile` refused. The
+  gates never saw it: `check:all` runs against an already-installed tree
+  and no gate installs from a frozen lockfile.
+
 ## [0.12.1] — 2026-07-28
 
 `v0.12.0` is tagged but has no container image — its commit cannot be
-built. Use this release instead; it carries the same code plus the build
-fix. Nothing in the application changed.
+built. This release carries the build fix, but is itself unbuildable for
+a second, unrelated reason (see 0.12.2). Nothing in the application
+changed.
 
 ### Fixed
 
