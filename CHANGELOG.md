@@ -10,8 +10,108 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-07-28
+
+The public-instance release. Warren can now serve a read-only audience
+over the same routes an operator uses, without a second codebase and
+without a reverse proxy in front. Anonymous callers get a capability set,
+not a bypass: every route is classified, every response is projected, and
+the instance refuses to boot if its registered projects fall outside the
+allowlist.
+
+Set `WARREN_AUTH=public` to turn it on. Absent or blank keeps the
+instance private, which is what every existing deployment already has.
+
+### Added
+
+- **`feat(auth)`** — `PublicReadProvider`, a third `AuthProvider` behind a
+  `WARREN_AUTH` registry resolved once at boot (warren-851b). It fails
+  closed: an unrecognized value refuses the boot rather than degrading to
+  a permissive default, and there is no path from a malformed setting to
+  `public`.
+- **`feat(auth)`** — a declarative capability policy covering all 39
+  `ROUTE_TABLE` entries (warren-b875). Classification is data, not a
+  per-handler check, so a new route is unreachable anonymously until
+  somebody classifies it. The steering inbox, finalize-intent, `/readyz`,
+  `/metrics`, cost analytics, triggers and warren-config are hard-blocked.
+- **`feat(server)`** — `GET /whoami` returns the caller's actor and
+  capability set (warren-e195), which is what lets the UI render one
+  build for both audiences.
+- **`feat(server)`** — a public-instance allowlist enforced at two points
+  (warren-ce9b). `WARREN_PUBLIC_ALLOWLIST` is a comma-separated list of
+  owners (`os-eco`) and/or single repos (`some-owner/some-repo`). Boot
+  holds every already-registered project to it and names the offenders
+  rather than serving them; `POST /projects` refuses a non-allowlisted
+  repo before any clone happens.
+- **`feat(ui)`** — a capability layer: the `useCapabilities()` hook, an
+  `OperatorOnly` wrapper over the ~20 mutation sites, route guards on
+  `/runs/new` and `/plan-runs/new`, and nav filtering (warren-f53e). A
+  logged-out visitor is shown no affordance it cannot use.
+- **`feat(k8s)`** — a Cloud Armor security policy and `BackendConfig` on
+  the GKE Ingress for L3/L7 abuse control (warren-48d3).
+- **`feat(acceptance)`** — scenario 39, the public-exposure leak
+  regression (warren-c405). It asserts no blocked route answers 200
+  anonymously and no redacted field appears in any anonymous response.
+  This is the only scenario wired into CI, because it is the one whose
+  regression is silent.
+- **`scripts/register-projects.ts`** — idempotent bulk project
+  registration against a running warren (warren-1841). It reads
+  `GET /projects` first and skips what is already there, so a run that
+  dies halfway through a batch of clones resumes instead of failing on
+  duplicates.
+- **`feat(lint)`** — `check:prose`, an ASD-STE100 prose guard chained into
+  `lint`.
+
+### Changed
+
+- **`refactor(auth)`** — `AuthOk` widens into a capability-carrying
+  `Actor` threaded through `RouteContext` (warren-1ff0). Pure refactor,
+  no behavior change; it is the seam the rest of the release hangs on.
+- **`refactor(types)`** — the canonical wire vocabulary moves into
+  `src/core/wire.ts`, a dependency-free kernel the SDK, the drizzle
+  columns and the Vite-bundled UI all re-export (warren-b229). Three
+  drifts died with it: `RunFailureReason` was missing `finalize_failed`
+  and `evicted` in two copies, the UI still typed the deleted
+  `interactive` run mode, and `RefreshAgentsResponse.removed` was
+  `{name}[]` against a server truth of `string[]`.
+- **`feat(lint)`** — `check:wire-types` forbids redeclaring a canonical
+  wire name outside that kernel (warren-d371). It derives the enforced
+  list from `src/core/wire.ts` at run time, because a hard-coded second
+  list would itself be the drift class the guard exists to prevent.
+- **`feat(gates)`** — the burrow-boundary guard generalizes into
+  `check:layers`, a data-driven gate reading `scripts/layer-rules.json`
+  (warren-89a6). Seven seams ship; a new one is a data edit and is born
+  enforced.
+- **`chore(gates)`** — `src/ui` comes under Biome, `check:size`,
+  `check:debt` and knip (warren-c8bd). Its exclusion is why the three
+  wire-type drifts above went unseen for months. Two bounded grandfather
+  lists carry the pre-existing debt and only shrink.
+- **`refactor(dups)`** — `defaultSpawn` is defined once instead of three
+  times, and `check:dups` now sees cross-layer clones (warren-032a).
+  Every copy carried a comment calling the duplication deliberate; the
+  stated reason did not hold.
+- **`docs`** — README truth pass with a ghcr.io quickstart and the
+  deleted-feature content removed (warren-76c1); ROADMAP rewritten from
+  91 KB to roughly 10 KB (warren-9600); a `docs/README.md` index plus
+  three superseded design docs deleted (warren-c69e); type-placement
+  guidance replaced with an explicit single-source-of-truth convention
+  (warren-02f2).
+
 ### Security
 
+- **`feat(server)`** — public projections for `GET /runs` and
+  `GET /runs/:id` (warren-946f). `renderedAgentJson`, `burrowId`,
+  `previewFailureMessage` and the instance-wide cost rollup are dropped;
+  the prompt and the per-run cost stay, because watching what an agent
+  was asked to do is the point of the demo.
+- **`feat(server)`** — public projections for `GET /projects`,
+  `GET /agents`, `GET /agents/:name` and `GET /analytics/runs`
+  (warren-4f6c): `localPath`, `renderedJson` and `resolvedFrom` are
+  dropped.
+- **`feat(server)`** — a secret scrubber and public projection over the
+  run event stream (warren-1cb7). `events.payload_json` holds raw agent
+  transcripts, which is the largest single disclosure surface on a
+  public instance.
 - **`fix(server)`** — `POST /agents/refresh` no longer forwards the caught
   error's own text in its `projectErrors[]` rows (warren-bf4c). Those
   errors are canopy shell-outs, so the message carried `cn` / `git`
