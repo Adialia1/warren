@@ -55,6 +55,17 @@ allowlist.
 Set `WARREN_AUTH=public` to turn it on. Absent or blank keeps the
 instance private, which is what every existing deployment already has.
 
+### Breaking
+
+- **`@os-eco/warren-cli` SDK** — `RUN_TERMINAL_STATES` and
+  `PLAN_RUN_TERMINAL_STATES` change from `ReadonlySet<RunState>` to a
+  readonly tuple (warren-b229 / warren-c92a). The SDK used to keep its own
+  `new Set([...])`; it now re-exports the one definition in
+  `src/core/wire.ts`. Callers must move from `.has(x)` to `.includes(x)`
+  and from `.size` to `.length`. `isTerminalRunState(state)` is unchanged
+  and is the stable way to ask the question — prefer it over touching the
+  collection.
+
 ### Added
 
 - **`feat(auth)`** — `PublicReadProvider`, a third `AuthProvider` behind a
