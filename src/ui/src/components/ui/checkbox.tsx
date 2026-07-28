@@ -20,8 +20,7 @@ import { cn } from "@/lib/utils.ts";
  * raw `<input type="checkbox">` sites (RunDetail.tsx, Runs.tsx) with
  * this primitive.
  */
-export interface CheckboxProps
-	extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
+export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
 	indeterminate?: boolean;
 }
 

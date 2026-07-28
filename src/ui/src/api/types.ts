@@ -774,4 +774,3 @@ export interface RunAnalyticsTokensSection {
 	/** Per-provider daily series, top-5 by total + OTHER_KEY fold + NONE_KEY. */
 	readonly byProviderTimeSeries: readonly DimensionTokenSeries[];
 }
-

@@ -173,11 +173,7 @@ export function RunsPage() {
 
 			<StaggerList className="flex flex-wrap gap-2">
 				<FadeInItem>
-					<FilterPill
-						active={filter === "all"}
-						label="All"
-						onClick={() => setFilter("all")}
-					/>
+					<FilterPill active={filter === "all"} label="All" onClick={() => setFilter("all")} />
 				</FadeInItem>
 				{agents.data?.agents.map((a) => (
 					<FadeInItem key={`a-${a.name}`}>
@@ -213,7 +209,9 @@ export function RunsPage() {
 				</CardHeader>
 				<CardContent className="p-0">
 					{runs.isLoading ? (
-						<div className="p-6"><Spinner label="Loading runs" /></div>
+						<div className="p-6">
+							<Spinner label="Loading runs" />
+						</div>
 					) : runs.isError ? (
 						<div className="p-6">
 							<Alert variant="danger" title="Failed to load runs">
@@ -221,10 +219,7 @@ export function RunsPage() {
 							</Alert>
 						</div>
 					) : runs.data?.runs.length === 0 ? (
-						<EmptyState
-							title="No runs match this filter"
-							description="Dispatch one above."
-						/>
+						<EmptyState title="No runs match this filter" description="Dispatch one above." />
 					) : (
 						<Table>
 							<TableHeader>
@@ -233,11 +228,7 @@ export function RunsPage() {
 									<TableHead className="whitespace-nowrap">ID</TableHead>
 									<TableHead className="whitespace-nowrap">Agent</TableHead>
 									<TableHead className="whitespace-nowrap">Project</TableHead>
-									<SortableTableHead
-										columnKey="started"
-										sort={sortState}
-										onSort={toggleSort}
-									>
+									<SortableTableHead columnKey="started" sort={sortState} onSort={toggleSort}>
 										Started
 									</SortableTableHead>
 									{showCost ? (
@@ -352,4 +343,3 @@ export function RunsPage() {
 		</div>
 	);
 }
-

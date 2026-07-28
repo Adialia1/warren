@@ -257,7 +257,30 @@ across the root package and the `src/ui` workspace. Config lives in
 `knip.json`. When knip reports an unused dep, the fix is almost
 always `bun remove <dep>` (or `cd src/ui && bun remove <dep>`) — don't
 add it to an ignore list unless it's a runtime-only / transport peer
-(e.g. pino transports loaded by string name).
+(e.g. pino transports loaded by string name). The `@fontsource-variable/*`
+packages are the one such peer in `src/ui`: they are reached only through
+`url()` in `src/ui/src/index.css`, which knip does not parse, so they sit
+in the `src/ui` workspace's `ignoreDependencies`.
+
+**`src/ui` is inside the gates** (warren-c8bd). It used to be excluded
+from Biome, `check:size`, `check:debt` and knip's file graph, which is
+why three wire-type drifts in `src/ui/src/api/types.ts` went unseen for
+months. Only `src/ui/dist/` (build output) is skipped now. Two bounded
+grandfather lists carry the pre-existing debt, and both are ratchets that
+only shrink:
+
+- `biome.json` `overrides[0]` — 15 `src/ui` files exempt from
+  `noExcessiveCognitiveComplexity`.
+- `biome.json` `overrides[1]` — 32 legacy PascalCase and camelCase UI
+  filenames exempt from `useFilenamingConvention`. New UI files are
+  kebab-case like the rest of the repo.
+
+`biome.json` is parsed with strict `JSON.parse` by
+`scripts/report-quality-metrics.ts`, so it cannot carry comments or a
+`$comment` key — the rationale for those two lists lives here and in
+`AGENTS.md`, not in the config. Three oversized UI files
+(`api/client.ts`, `api/types.ts`, `pages/RunDetail.tsx`) are grandfathered
+in `scripts/file-size-budgets.json` at their measured line counts.
 
 `check:bundle-size` (warren-5abc) guards `src/ui/dist/` against the
 ratchet in `scripts/bundle-size-budgets.json`. **Two parity gotchas

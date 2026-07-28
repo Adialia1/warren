@@ -9,15 +9,7 @@ import type {
 	PlanRunState,
 	RunRow,
 } from "@/api/types.ts";
-import { useCapabilities } from "@/hooks/use-capabilities.ts";
-import {
-	compareStrings,
-	type Comparator,
-	useClientSort,
-} from "@/hooks/use-client-sort.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
-import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
-import { formatCostUsd } from "./RunDetail.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -25,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.t
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
 import { responsiveTrailingControl } from "@/components/ui/responsive.ts";
+import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -34,8 +27,11 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
+import { type Comparator, compareStrings, useClientSort } from "@/hooks/use-client-sort.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
+import { formatCostUsd } from "./RunDetail.tsx";
 import { ReadyPlansView } from "./ready-plans.tsx";
 
 type PlanRunsTab = "plan-runs" | "ready";
@@ -108,11 +104,11 @@ export function PlanRunsPage() {
 		}),
 		[projectIndex],
 	);
-	const { sorted, sort, onSort } = useClientSort(
-		planRuns.data?.planRuns ?? [],
-		comparators,
-		{ initialKey: "startedAt", initialDirection: "desc", defaultDirections: { startedAt: "desc" } },
-	);
+	const { sorted, sort, onSort } = useClientSort(planRuns.data?.planRuns ?? [], comparators, {
+		initialKey: "startedAt",
+		initialDirection: "desc",
+		defaultDirections: { startedAt: "desc" },
+	});
 
 	const canReadReady = caps.can(READY_TAB_CAPABILITY);
 	const visibleTabs = canReadReady ? TABS : TABS.filter((t) => t.value !== "ready");
@@ -183,67 +179,69 @@ export function PlanRunsPage() {
 			{activeTab === "ready" ? (
 				<ReadyPlansView projectId={projectFilter} />
 			) : (
-			<Card>
-				<CardHeader>
-					<CardTitle>{planRuns.data?.planRuns.length ?? 0} plan runs</CardTitle>
-				</CardHeader>
-				<CardContent className="p-0">
-					{planRuns.isLoading ? (
-						<div className="p-6"><Spinner label="Loading plan runs" /></div>
-					) : planRuns.isError ? (
-						<div className="p-6">
-							<Alert variant="danger" title="Failed to load plan runs">
-								{formatError(planRuns.error)}
-							</Alert>
-						</div>
-					) : planRuns.data?.planRuns.length === 0 ? (
-						<EmptyState
-							title="No plan runs match this filter"
-							description="Dispatch one above."
-						/>
-					) : (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<SortableTableHead columnKey="state" sort={sort} onSort={onSort}>
-										State
-									</SortableTableHead>
-									<SortableTableHead columnKey="id" sort={sort} onSort={onSort}>
-										ID
-									</SortableTableHead>
-									<SortableTableHead columnKey="planId" sort={sort} onSort={onSort}>
-										Plan
-									</SortableTableHead>
-									<SortableTableHead columnKey="project" sort={sort} onSort={onSort}>
-										Project
-									</SortableTableHead>
-									<SortableTableHead columnKey="agentName" sort={sort} onSort={onSort}>
-										Agent
-									</SortableTableHead>
-									<TableHead className="whitespace-nowrap">Children</TableHead>
-									<TableHead className="whitespace-nowrap">Cost</TableHead>
-									<SortableTableHead columnKey="startedAt" sort={sort} onSort={onSort}>
-										Started
-									</SortableTableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{sorted.map((pr) => (
-									<PlanRunListRow
-										key={pr.id}
-										planRunId={pr.id}
-										planId={pr.planId}
-										state={pr.state}
-										startedAt={pr.startedAt}
-										agentName={pr.agentName}
-										projectLabel={projectIndex.get(pr.projectId) ?? pr.projectId}
-									/>
-								))}
-							</TableBody>
-						</Table>
-					)}
-				</CardContent>
-			</Card>
+				<Card>
+					<CardHeader>
+						<CardTitle>{planRuns.data?.planRuns.length ?? 0} plan runs</CardTitle>
+					</CardHeader>
+					<CardContent className="p-0">
+						{planRuns.isLoading ? (
+							<div className="p-6">
+								<Spinner label="Loading plan runs" />
+							</div>
+						) : planRuns.isError ? (
+							<div className="p-6">
+								<Alert variant="danger" title="Failed to load plan runs">
+									{formatError(planRuns.error)}
+								</Alert>
+							</div>
+						) : planRuns.data?.planRuns.length === 0 ? (
+							<EmptyState
+								title="No plan runs match this filter"
+								description="Dispatch one above."
+							/>
+						) : (
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<SortableTableHead columnKey="state" sort={sort} onSort={onSort}>
+											State
+										</SortableTableHead>
+										<SortableTableHead columnKey="id" sort={sort} onSort={onSort}>
+											ID
+										</SortableTableHead>
+										<SortableTableHead columnKey="planId" sort={sort} onSort={onSort}>
+											Plan
+										</SortableTableHead>
+										<SortableTableHead columnKey="project" sort={sort} onSort={onSort}>
+											Project
+										</SortableTableHead>
+										<SortableTableHead columnKey="agentName" sort={sort} onSort={onSort}>
+											Agent
+										</SortableTableHead>
+										<TableHead className="whitespace-nowrap">Children</TableHead>
+										<TableHead className="whitespace-nowrap">Cost</TableHead>
+										<SortableTableHead columnKey="startedAt" sort={sort} onSort={onSort}>
+											Started
+										</SortableTableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{sorted.map((pr) => (
+										<PlanRunListRow
+											key={pr.id}
+											planRunId={pr.id}
+											planId={pr.planId}
+											state={pr.state}
+											startedAt={pr.startedAt}
+											agentName={pr.agentName}
+											projectLabel={projectIndex.get(pr.projectId) ?? pr.projectId}
+										/>
+									))}
+								</TableBody>
+							</Table>
+						)}
+					</CardContent>
+				</Card>
 			)}
 		</div>
 	);
@@ -337,9 +335,7 @@ function summarizeCost(runs: RunRow[]): {
 	return { sum, priced, total: runs.length };
 }
 
-function summarizeChildren(
-	children: { state: PlanRunChildState }[],
-): string {
+function summarizeChildren(children: { state: PlanRunChildState }[]): string {
 	if (children.length === 0) return "—";
 	const buckets: Record<"pending" | "inflight" | "merged" | "failed", number> = {
 		pending: 0,

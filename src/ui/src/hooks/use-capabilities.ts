@@ -1,10 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { metaApi } from "@/api/client.ts";
-import {
-	type Capabilities,
-	resolveCapabilities,
-	retryWhoami,
-} from "./use-capabilities.helpers.ts";
+import { type Capabilities, resolveCapabilities, retryWhoami } from "./use-capabilities.helpers.ts";
 
 export type { Capabilities, CapabilityStatus } from "./use-capabilities.helpers.ts";
 

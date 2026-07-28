@@ -46,9 +46,7 @@ export function RefreshProjectsCTA() {
 				onClick={() => refreshAll.mutate()}
 				disabled={disabled}
 			>
-				<RefreshCw
-					className={`mr-2 h-4 w-4 ${refreshAll.isPending ? "animate-spin" : ""}`}
-				/>
+				<RefreshCw className={`mr-2 h-4 w-4 ${refreshAll.isPending ? "animate-spin" : ""}`} />
 				Refresh all
 			</Button>
 			{refreshAll.isError ? (

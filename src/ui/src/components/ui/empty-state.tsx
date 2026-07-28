@@ -32,10 +32,7 @@ export interface EmptyStateProps extends Omit<React.HTMLAttributes<HTMLDivElemen
 }
 
 export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
-	(
-		{ className, icon: Icon, title, description, action, compact, children, ...props },
-		ref,
-	) => (
+	({ className, icon: Icon, title, description, action, compact, children, ...props }, ref) => (
 		<div
 			ref={ref}
 			className={cn(
@@ -46,16 +43,11 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
 			{...props}
 		>
 			{Icon ? (
-				<Icon
-					aria-hidden="true"
-					className="h-8 w-8 text-(--color-muted-foreground) opacity-70"
-				/>
+				<Icon aria-hidden="true" className="h-8 w-8 text-(--color-muted-foreground) opacity-70" />
 			) : null}
 			<div className="text-sm font-medium text-(--color-fg)">{title}</div>
 			{description ? (
-				<div className="text-sm text-(--color-muted-foreground) max-w-prose">
-					{description}
-				</div>
+				<div className="text-sm text-(--color-muted-foreground) max-w-prose">{description}</div>
 			) : null}
 			{children}
 			{action ? <div className="mt-2">{action}</div> : null}

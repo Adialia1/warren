@@ -223,7 +223,11 @@ describe("wire paths", () => {
 			call: (a) => a.projectsApi.warrenConfig("p1"),
 			url: "/projects/p1/warren-config",
 		},
-		{ name: "projects.triggers", call: (a) => a.projectsApi.triggers("p1"), url: "/projects/p1/triggers" },
+		{
+			name: "projects.triggers",
+			call: (a) => a.projectsApi.triggers("p1"),
+			url: "/projects/p1/triggers",
+		},
 		{
 			name: "projects.runTrigger",
 			call: (a) => a.projectsApi.runTrigger("p1", "t1"),
@@ -235,8 +239,16 @@ describe("wire paths", () => {
 			call: (a) => a.projectsApi.seedStatus("p1", "warren-e1b0"),
 			url: "/projects/p1/seeds/warren-e1b0",
 		},
-		{ name: "projects.seedPlans", call: (a) => a.projectsApi.seedPlans("p1"), url: "/projects/p1/seeds/plans" },
-		{ name: "projects.readyPlans", call: (a) => a.projectsApi.readyPlans("p1"), url: "/projects/p1/ready-plans" },
+		{
+			name: "projects.seedPlans",
+			call: (a) => a.projectsApi.seedPlans("p1"),
+			url: "/projects/p1/seeds/plans",
+		},
+		{
+			name: "projects.readyPlans",
+			call: (a) => a.projectsApi.readyPlans("p1"),
+			url: "/projects/p1/ready-plans",
+		},
 		{ name: "runs.list", call: (a) => a.runsApi.list(), url: "/runs" },
 		{
 			name: "runs.list (filtered)",

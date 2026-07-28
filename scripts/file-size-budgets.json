@@ -1,5 +1,5 @@
 {
-	"_comment": "Per-file line-count budgets (warren-4553). New files default to `threshold`. Listed files are grandfathered at their commit-time line count and may not grow beyond it. Refactor + lower budgets over time; ratchet only goes down.",
+	"_comment": "Per-file line-count budgets (warren-4553). New files default to `threshold`. Listed files are grandfathered at their commit-time line count and may not grow beyond it. Refactor + lower budgets over time; ratchet only goes down. The three `src/ui/` entries are the grandfather baseline from warren-c8bd, which brought src/ui under this gate for the first time; every number is the measured line count at that commit, not a padded one.",
 	"threshold": 500,
 	"budgets": {
 		"src/db/repos/runs.test.ts": 538,
@@ -14,6 +14,9 @@
 		"src/triggers/tick.test.ts": 539,
 		"src/server/server.test.ts": 536,
 		"src/server/types.ts": 508,
+		"src/ui/src/api/client.ts": 728,
+		"src/ui/src/api/types.ts": 776,
+		"src/ui/src/pages/RunDetail.tsx": 1103,
 		"src/warren-config/schema.ts": 504
 	}
 }

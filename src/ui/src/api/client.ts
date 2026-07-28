@@ -24,6 +24,7 @@ import type {
 	RefreshAgentsResponse,
 	RefreshProjectAgentsResponse,
 	RefreshProjectResponse,
+	RunAnalyticsTokensSection,
 	RunEvent,
 	RunRow,
 	RunTriggerResponse,
@@ -31,14 +32,18 @@ import type {
 	SeedStatusResponse,
 	SpawnRunResponse,
 	SteerRunResponse,
+	TokenBreakdown,
 	TriggersResponse,
 	WarrenConfigResponse,
 	WhoamiResponse,
-	TokenBreakdown,
-	RunAnalyticsTokensSection,
 } from "./types.ts";
 
-export type { TokenBreakdown, DimensionTokenSeries, TokenDayBucket, RunAnalyticsTokensSection } from "./types.ts";
+export type {
+	DimensionTokenSeries,
+	RunAnalyticsTokensSection,
+	TokenBreakdown,
+	TokenDayBucket,
+} from "./types.ts";
 
 const TOKEN_KEY = "warren.apiToken";
 
@@ -339,10 +344,9 @@ export const planRunsApi = {
 		if (filter.project) params.set("project", filter.project);
 		if (filter.state) params.set("state", filter.state);
 		const qs = params.toString();
-		return request<{ planRuns: PlanRunRow[] }>(
-			`/plan-runs${qs.length > 0 ? `?${qs}` : ""}`,
-			{ ...(signal ? { signal } : {}) },
-		);
+		return request<{ planRuns: PlanRunRow[] }>(`/plan-runs${qs.length > 0 ? `?${qs}` : ""}`, {
+			...(signal ? { signal } : {}),
+		});
 	},
 	get: (id: string, signal?: AbortSignal) =>
 		request<PlanRunDetailResponse>(`/plan-runs/${encodeURIComponent(id)}`, {
@@ -355,8 +359,7 @@ export const planRunsApi = {
 			method: "POST",
 			body: {},
 		}),
-	events: (id: string, opts: StreamRunEventsOptions = {}) =>
-		streamPlanRunEvents(id, opts),
+	events: (id: string, opts: StreamRunEventsOptions = {}) => streamPlanRunEvents(id, opts),
 };
 
 /**
@@ -369,10 +372,7 @@ export async function* streamPlanRunEvents(
 	planRunId: string,
 	opts: StreamRunEventsOptions = {},
 ): AsyncGenerator<RunEvent, void, void> {
-	yield* streamNdjsonEvents(
-		`/plan-runs/${encodeURIComponent(planRunId)}/events`,
-		opts,
-	);
+	yield* streamNdjsonEvents(`/plan-runs/${encodeURIComponent(planRunId)}/events`, opts);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -505,14 +505,7 @@ export const metaApi = {
 /* Analytics (warren-cf63 / pl-b0c0 step 6)                                 */
 /* ----------------------------------------------------------------------- */
 
-export type CostDimension =
-	| "date"
-	| "project"
-	| "plan"
-	| "run"
-	| "agent"
-	| "model"
-	| "provider";
+export type CostDimension = "date" | "project" | "plan" | "run" | "agent" | "model" | "provider";
 
 export interface CostBucket {
 	key: string;
@@ -542,10 +535,9 @@ export const analyticsApi = {
 		if (filter.from) params.set("from", filter.from);
 		if (filter.to) params.set("to", filter.to);
 		const qs = params.toString();
-		return request<CostAnalyticsResponse>(
-			`/analytics/cost${qs.length > 0 ? `?${qs}` : ""}`,
-			{ ...(signal ? { signal } : {}) },
-		);
+		return request<CostAnalyticsResponse>(`/analytics/cost${qs.length > 0 ? `?${qs}` : ""}`, {
+			...(signal ? { signal } : {}),
+		});
 	},
 };
 
@@ -719,10 +711,9 @@ export const runAnalyticsApi = {
 		if (filter.from) params.set("from", filter.from);
 		if (filter.to) params.set("to", filter.to);
 		const qs = params.toString();
-		return request<RunAnalyticsResponse>(
-			`/analytics/runs${qs.length > 0 ? `?${qs}` : ""}`,
-			{ ...(signal ? { signal } : {}) },
-		);
+		return request<RunAnalyticsResponse>(`/analytics/runs${qs.length > 0 ? `?${qs}` : ""}`, {
+			...(signal ? { signal } : {}),
+		});
 	},
 	behavior: (filter: RunAnalyticsFilter = {}, signal?: AbortSignal) => {
 		const params = new URLSearchParams();
@@ -730,9 +721,8 @@ export const runAnalyticsApi = {
 		if (filter.from) params.set("from", filter.from);
 		if (filter.to) params.set("to", filter.to);
 		const qs = params.toString();
-		return request<RunBehaviorResponse>(
-			`/analytics/behavior${qs.length > 0 ? `?${qs}` : ""}`,
-			{ ...(signal ? { signal } : {}) },
-		);
+		return request<RunBehaviorResponse>(`/analytics/behavior${qs.length > 0 ? `?${qs}` : ""}`, {
+			...(signal ? { signal } : {}),
+		});
 	},
 };

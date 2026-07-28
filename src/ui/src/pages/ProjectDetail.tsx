@@ -14,13 +14,7 @@ import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	cardVariants,
-} from "@/components/ui/card.tsx";
+import { Card, CardContent, CardHeader, CardTitle, cardVariants } from "@/components/ui/card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { formatError } from "@/lib/format-error.ts";
@@ -117,10 +111,7 @@ function ProjectMetaCard({ project }: { project: ProjectRow }) {
 					<MetaRow
 						label="Last HEAD"
 						value={
-							<code
-								className="text-xs"
-								title={project.lastHeadSha ?? "never fetched"}
-							>
+							<code className="text-xs" title={project.lastHeadSha ?? "never fetched"}>
 								{project.lastHeadSha !== null ? project.lastHeadSha.slice(0, 12) : "—"}
 							</code>
 						}
@@ -128,9 +119,7 @@ function ProjectMetaCard({ project }: { project: ProjectRow }) {
 					<MetaRow
 						label="Last fetched"
 						value={
-							project.lastFetchedAt !== null
-								? formatTimestamp(project.lastFetchedAt)
-								: "never"
+							project.lastFetchedAt !== null ? formatTimestamp(project.lastFetchedAt) : "never"
 						}
 					/>
 					<MetaRow label="Added" value={formatTimestamp(project.addedAt)} />
@@ -196,9 +185,7 @@ function WarrenConfigError({ error }: { error: unknown }) {
 	if (error instanceof ApiError && error.status === 503) {
 		return (
 			<Alert variant="danger" title={error.message}>
-				{error.hint !== undefined ? (
-					<span className="text-xs">{error.hint}</span>
-				) : null}
+				{error.hint !== undefined ? <span className="text-xs">{error.hint}</span> : null}
 			</Alert>
 		);
 	}
@@ -247,9 +234,7 @@ function TriggersBlock({ projectId }: { projectId: string }) {
 							isRunning={runNow.isPending && runNow.variables === t.id}
 							onRunNow={() => runNow.mutate(t.id)}
 							runError={
-								runNow.isError && runNow.variables === t.id
-									? formatError(runNow.error)
-									: null
+								runNow.isError && runNow.variables === t.id ? formatError(runNow.error) : null
 							}
 						/>
 					))}
@@ -272,10 +257,7 @@ function TriggerRow({
 }) {
 	return (
 		<li
-			className={cn(
-				cardVariants({ variant: "flat" }),
-				"bg-(--color-muted)/30 px-3 py-2 text-sm",
-			)}
+			className={cn(cardVariants({ variant: "flat" }), "bg-(--color-muted)/30 px-3 py-2 text-sm")}
 		>
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<div className="flex flex-wrap items-baseline gap-2">
@@ -285,18 +267,10 @@ function TriggerRow({
 					</Badge>
 					<code className="text-xs text-(--color-muted-foreground)">{trigger.cron}</code>
 					{trigger.timezone !== undefined ? (
-						<span className="text-xs text-(--color-muted-foreground)">
-							tz: {trigger.timezone}
-						</span>
+						<span className="text-xs text-(--color-muted-foreground)">tz: {trigger.timezone}</span>
 					) : null}
 				</div>
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					onClick={onRunNow}
-					disabled={isRunning}
-				>
+				<Button type="button" variant="outline" size="sm" onClick={onRunNow} disabled={isRunning}>
 					{isRunning ? "Dispatching…" : "Run now"}
 				</Button>
 			</div>
@@ -357,7 +331,10 @@ function TriggerRow({
 function DefaultsBlock({
 	defaults,
 	sourceFile,
-}: { defaults: DefaultsConfig | null; sourceFile: string | null }) {
+}: {
+	defaults: DefaultsConfig | null;
+	sourceFile: string | null;
+}) {
 	const isEmpty =
 		defaults !== null &&
 		defaults.defaultRole === undefined &&
@@ -407,9 +384,7 @@ function DefaultsBlock({
 function ErrorsBlock({ errors }: { errors: WarrenConfigFileError[] }) {
 	return (
 		<section>
-			<h3 className="mb-2 text-sm font-semibold text-(--color-destructive)">
-				Validation errors
-			</h3>
+			<h3 className="mb-2 text-sm font-semibold text-(--color-destructive)">Validation errors</h3>
 			<ul className="space-y-2">
 				{errors.map((e) => (
 					<li

@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { projectsApi } from "@/api/client.ts";
 import type { ReadyPlan } from "@/api/types.ts";
+import { DispatchPlanButton } from "@/components/dispatch-plan-dialog.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
 	TableBody,
@@ -12,9 +14,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
-import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
-import { DispatchPlanButton } from "@/components/dispatch-plan-dialog.tsx";
 
 /**
  * "Ready to dispatch" tab body (warren-ce62 / pl-3fc4 step 7).
@@ -95,13 +95,7 @@ export function ReadyPlansView({ projectId }: { projectId: string }): JSX.Elemen
 	);
 }
 
-function ReadyPlanRow({
-	plan,
-	projectId,
-}: {
-	plan: ReadyPlan;
-	projectId: string;
-}): JSX.Element {
+function ReadyPlanRow({ plan, projectId }: { plan: ReadyPlan; projectId: string }): JSX.Element {
 	return (
 		<TableRow>
 			<TableCell className="whitespace-nowrap font-mono text-xs">{plan.id}</TableCell>

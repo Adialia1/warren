@@ -14,9 +14,7 @@ export interface ClassifiedAgentSource {
 	projectId: string | null;
 }
 
-export function classifyAgentSource(
-	source: AgentRow["source"] | undefined,
-): ClassifiedAgentSource {
+export function classifyAgentSource(source: AgentRow["source"] | undefined): ClassifiedAgentSource {
 	if (source === undefined) return { tier: "unknown", label: "—", projectId: null };
 	if (source === "builtin") return { tier: "builtin", label: "built-in", projectId: null };
 	if (source === "library") return { tier: "library", label: "library", projectId: null };

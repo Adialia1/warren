@@ -21,21 +21,18 @@ import { cn } from "@/lib/utils.ts";
  * actual clickable-row sites — adding it now would just pay the
  * bundle-size cost for utilities no consumer references yet.
  */
-const cardVariants = cva(
-	"border bg-(--color-card) text-(--color-fg)",
-	{
-		variants: {
-			variant: {
-				default: "rounded-lg shadow-xs",
-				elevated: "rounded-lg shadow-md",
-				flat: "rounded-md",
-			},
-		},
-		defaultVariants: {
-			variant: "default",
+const cardVariants = cva("border bg-(--color-card) text-(--color-fg)", {
+	variants: {
+		variant: {
+			default: "rounded-lg shadow-xs",
+			elevated: "rounded-lg shadow-md",
+			flat: "rounded-md",
 		},
 	},
-);
+	defaultVariants: {
+		variant: "default",
+	},
+});
 
 export interface CardProps
 	extends React.HTMLAttributes<HTMLDivElement>,
@@ -70,11 +67,7 @@ export const CardDescription = React.forwardRef<
 	HTMLDivElement,
 	React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-	<div
-		ref={ref}
-		className={cn("text-sm text-(--color-muted-foreground)", className)}
-		{...props}
-	/>
+	<div ref={ref} className={cn("text-sm text-(--color-muted-foreground)", className)} {...props} />
 ));
 CardDescription.displayName = "CardDescription";
 

@@ -3,7 +3,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { metaApi, setApiToken, UnauthorizedError } from "@/api/client.ts";
 import { Button } from "@/components/ui/button.tsx";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
 
@@ -74,9 +80,7 @@ export function LoginPage() {
 								autoFocus
 							/>
 						</div>
-						{error !== null ? (
-							<p className="text-sm text-(--color-destructive)">{error}</p>
-						) : null}
+						{error !== null ? <p className="text-sm text-(--color-destructive)">{error}</p> : null}
 						<Button type="submit" disabled={pending} className="w-full">
 							{pending ? "Verifying…" : "Continue"}
 						</Button>

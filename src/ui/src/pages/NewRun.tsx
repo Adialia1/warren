@@ -6,8 +6,8 @@ import type { AgentRow, CreateRunInput } from "@/api/types.ts";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
-import { Input } from "@/components/ui/input.tsx";
 import { Field } from "@/components/ui/field.tsx";
+import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
 import {
@@ -116,8 +116,7 @@ export function NewRunPage() {
 	const registeredAgents = agents.data?.agents ?? [];
 	const defaultRoleRegistered =
 		defaultRole !== undefined && registeredAgents.some((a) => a.name === defaultRole);
-	const agentFromDefault =
-		!agentTouched && defaultRoleRegistered && agent === defaultRole;
+	const agentFromDefault = !agentTouched && defaultRoleRegistered && agent === defaultRole;
 	const promptFromDefault =
 		!promptTouched && defaultPrompt !== undefined && prompt === defaultPrompt;
 
@@ -240,8 +239,7 @@ export function NewRunPage() {
 			{noProjects ? (
 				<Card>
 					<CardContent className="p-4 text-sm text-(--color-destructive)">
-						No projects added. Visit <strong>Projects</strong> to clone one from
-						GitHub.
+						No projects added. Visit <strong>Projects</strong> to clone one from GitHub.
 					</CardContent>
 				</Card>
 			) : null}
@@ -270,9 +268,7 @@ export function NewRunPage() {
 								{agents.data?.agents.map((a) => (
 									<option key={`${a.source ?? "unknown"}::${a.name}`} value={a.name}>
 										{a.name}
-										{classifyAgentSource(a.source).tier === "project"
-											? " (project)"
-											: ""}
+										{classifyAgentSource(a.source).tier === "project" ? " (project)" : ""}
 									</option>
 								))}
 							</select>
@@ -284,8 +280,7 @@ export function NewRunPage() {
 								</p>
 							) : defaultRole !== undefined && !defaultRoleRegistered ? (
 								<p className="text-xs text-(--color-destructive)">
-									Project default role{" "}
-									<code className="font-mono">{defaultRole}</code> is not a
+									Project default role <code className="font-mono">{defaultRole}</code> is not a
 									registered agent.
 								</p>
 							) : null}
@@ -412,9 +407,7 @@ export function NewRunPage() {
 
 						{spawn.isError ? (
 							<p className="text-sm text-(--color-destructive)">
-								{spawn.error instanceof Error
-									? spawn.error.message
-									: String(spawn.error)}
+								{spawn.error instanceof Error ? spawn.error.message : String(spawn.error)}
 							</p>
 						) : null}
 
@@ -456,13 +449,7 @@ export function NewRunPage() {
  * coarse — the expanded Agents row carries the full `project:<id>`
  * string when needed.
  */
-function AgentSourceHint({
-	agent,
-	project,
-}: {
-	agent: AgentRow | undefined;
-	project: string;
-}) {
+function AgentSourceHint({ agent, project }: { agent: AgentRow | undefined; project: string }) {
 	if (agent === undefined) return null;
 	const classified = classifyAgentSource(agent.source);
 	if (classified.tier === "unknown") return null;

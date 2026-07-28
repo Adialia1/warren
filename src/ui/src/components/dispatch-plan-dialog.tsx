@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { agentsApi, ApiError, planRunsApi, projectsApi } from "@/api/client.ts";
+import { ApiError, agentsApi, planRunsApi, projectsApi } from "@/api/client.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
@@ -150,8 +150,13 @@ export function DispatchPlanDialog({
 		},
 	});
 
-	const submittable =
-		computeSubmittable({ isPending: dispatch.isPending, hasSeeds, agent, planId, promptTemplate });
+	const submittable = computeSubmittable({
+		isPending: dispatch.isPending,
+		hasSeeds,
+		agent,
+		planId,
+		promptTemplate,
+	});
 
 	const handleDispatch = (): void => {
 		if (!submittable) return;
@@ -188,10 +193,9 @@ export function DispatchPlanDialog({
 				<DialogHeader>
 					<DialogTitle>Dispatch plan</DialogTitle>
 					<DialogDescription>
-						Dispatch is operator-gated. Provide the approved plan id and dispatch a
-						plan-run over the same path as{" "}
-						<code className="font-mono">/plan-runs/new</code>. Each open child seed runs
-						sequentially.
+						Dispatch is operator-gated. Provide the approved plan id and dispatch a plan-run over
+						the same path as <code className="font-mono">/plan-runs/new</code>. Each open child seed
+						runs sequentially.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -311,8 +315,8 @@ export function DispatchPlanDialog({
 
 				{!loading && !hasSeeds ? (
 					<p className="text-sm text-(--color-destructive)">
-						Plan runs require <code className="font-mono">.seeds/</code> at the project
-						root. This project has none — add one and refresh.
+						Plan runs require <code className="font-mono">.seeds/</code> at the project root. This
+						project has none — add one and refresh.
 					</p>
 				) : null}
 				{errorMessage !== null ? (

@@ -32,10 +32,7 @@ export interface PageHeaderProps extends Omit<React.HTMLAttributes<HTMLElement>,
 }
 
 export const PageHeader = React.forwardRef<HTMLElement, PageHeaderProps>(
-	(
-		{ className, title, description, actions, monoTitle, as = "h1", children, ...props },
-		ref,
-	) => {
+	({ className, title, description, actions, monoTitle, as = "h1", children, ...props }, ref) => {
 		const Heading = as;
 		const headingClass = monoTitle
 			? "font-mono text-xl font-semibold"
@@ -43,10 +40,7 @@ export const PageHeader = React.forwardRef<HTMLElement, PageHeaderProps>(
 		return (
 			<header
 				ref={ref}
-				className={cn(
-					"flex flex-wrap items-center justify-between gap-4",
-					className,
-				)}
+				className={cn("flex flex-wrap items-center justify-between gap-4", className)}
 				{...props}
 			>
 				<div className="min-w-0">
