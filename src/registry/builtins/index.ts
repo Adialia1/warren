@@ -22,6 +22,7 @@
  * responses; the UI parses the prefix to render provenance.
  */
 
+import type { AgentSource } from "../../core/wire.ts";
 import type { AgentsRepo } from "../../db/repos/agents.ts";
 import type { AgentDefinition } from "../schema.ts";
 import { BUGWATCH_BUILTIN } from "./bugwatch.ts";
@@ -45,7 +46,13 @@ export const PROJECT_AGENT_SOURCE_PREFIX = "project:" as const;
 export type BuiltinAgentSource = typeof BUILTIN_AGENT_SOURCE;
 export type LibraryAgentSource = typeof LIBRARY_AGENT_SOURCE;
 export type ProjectAgentSource = `${typeof PROJECT_AGENT_SOURCE_PREFIX}${string}`;
-export type AgentSource = BuiltinAgentSource | LibraryAgentSource | ProjectAgentSource;
+/**
+ * The union is canonical wire vocabulary — it is what `GET /agents` puts on
+ * `source` — so it is DEFINED in `src/core/wire.ts` and re-exported here
+ * (warren-b229). The three arms above stay local because they are derived
+ * from this module's own constants.
+ */
+export type { AgentSource };
 
 /**
  * Coarse tier classification: collapses `project:<projectId>` rows to

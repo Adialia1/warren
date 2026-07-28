@@ -21,11 +21,8 @@ describe("isTerminalRunState", () => {
 		}
 	});
 
-	test("RUN_TERMINAL_STATES is the same canonical set", () => {
-		expect(RUN_TERMINAL_STATES.size).toBe(3);
-		expect(RUN_TERMINAL_STATES.has("succeeded")).toBe(true);
-		expect(RUN_TERMINAL_STATES.has("failed")).toBe(true);
-		expect(RUN_TERMINAL_STATES.has("cancelled")).toBe(true);
+	test("RUN_TERMINAL_STATES re-exports the canonical tuple", () => {
+		expect([...RUN_TERMINAL_STATES]).toEqual(["succeeded", "failed", "cancelled"]);
 	});
 });
 
@@ -42,10 +39,7 @@ describe("isTerminalPlanRunState", () => {
 		}
 	});
 
-	test("PLAN_RUN_TERMINAL_STATES is the canonical terminal set", () => {
-		expect(PLAN_RUN_TERMINAL_STATES.size).toBe(3);
-		expect(PLAN_RUN_TERMINAL_STATES.has("succeeded")).toBe(true);
-		expect(PLAN_RUN_TERMINAL_STATES.has("failed")).toBe(true);
-		expect(PLAN_RUN_TERMINAL_STATES.has("cancelled")).toBe(true);
+	test("PLAN_RUN_TERMINAL_STATES re-exports the canonical tuple", () => {
+		expect([...PLAN_RUN_TERMINAL_STATES]).toEqual(["succeeded", "failed", "cancelled"]);
 	});
 });

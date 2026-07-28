@@ -1,33 +1,48 @@
-// Wire-side type mirrors. The server returns the `runs.RunRow`,
-// `agents.AgentRow`, and `projects.ProjectRow` shapes from drizzle. We
-// duplicate them here so the UI doesn't depend on `src/db/schema.ts`
-// (root tsconfig excludes `src/ui` deliberately — the boundary is the
-// HTTP wire, not a TS import).
+// Wire-side response shapes for warren's HTTP API.
+//
+// The ENUM VOCABULARY (run / plan-run / preview lifecycle states, the
+// failure-cause discriminator, run mode, clone kind, event stream) is NOT
+// declared here. It is defined once in `src/core/wire.ts` — warren's
+// dependency-free kernel — and re-exported below, so the UI and the server
+// can never drift the way they did before warren-b229 (a `RunFailureReason`
+// missing two live values, a deleted `interactive` run mode, and a
+// `RefreshAgentsResponse.removed` typed `{name}[]` against a `string[]`
+// server truth). `src/ui/tsconfig.app.json` lists `../core/wire.ts` in its
+// `include` so the separate `@os-eco/warren-ui` project can see the file.
+//
+// Only the RESPONSE ENVELOPES below are UI-local, and only because the
+// server's row types are drizzle-inferred — importing them would drag
+// drizzle and `bun:sqlite` into the browser bundle.
 
-export type RunState = "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
+export {
+	type AgentSource,
+	isActivePreviewState,
+	isTerminalPlanRunChildState,
+	isTerminalPlanRunState,
+	isTerminalRunState,
+	PLAN_RUN_ACTIVE_STATES,
+	PLAN_RUN_TERMINAL_STATES,
+	type PlanRunChildState,
+	type PlanRunState,
+	PREVIEW_ACTIVE_STATES,
+	type PreviewState,
+	RUN_TERMINAL_STATES,
+	type RunFailureReason,
+	type RunMode,
+	type RunState,
+} from "../../../core/wire.ts";
 
-export const RUN_TERMINAL_STATES: readonly RunState[] = ["succeeded", "failed", "cancelled"];
-
-/** Failure-cause discriminator for `state:failed` rows (warren-3c40, warren-5165). */
-export type RunFailureReason =
-	| "never_started"
-	| "no_model_response"
-	| "crashed"
-	| "timed_out"
-	| "burrow_run_lost"
-	| "burrow_unreachable"
-	| "dropped_commit"
-	| "provider_error"
-	| "oom_killed";
-
-/**
- * Preview environment lifecycle (R-19 / SPEC §11.L). Null on rows whose
- * project hasn't opted into previews; non-null once reap's
- * `preview_launch` sub-step has fired. See `src/db/schema/columns.ts`.
- */
-export type PreviewState = "starting" | "live" | "failed" | "torn-down";
-
-export const PREVIEW_ACTIVE_STATES: readonly PreviewState[] = ["starting", "live"];
+import type {
+	AgentSource,
+	CloneKind,
+	EventStream,
+	PlanRunChildState,
+	PlanRunState,
+	PreviewState,
+	RunFailureReason,
+	RunMode,
+	RunState,
+} from "../../../core/wire.ts";
 
 export interface AgentRow {
 	name: string;
@@ -55,7 +70,7 @@ export interface AgentRow {
 	 * include `project:<projectId>` for the per-project `.canopy/` tier;
 	 * UI surfaces classify by the `project:` prefix.
 	 */
-	source?: "builtin" | "library" | `project:${string}`;
+	source?: AgentSource;
 }
 
 export interface ProjectRow {
@@ -130,14 +145,14 @@ export interface RunRow {
 	 * re-dispatch of the parent's exact agent/model/project/prompt against
 	 * the project default base). Null for root runs.
 	 */
-	cloneKind: "replicate" | "continue" | null;
+	cloneKind: CloneKind | null;
 	/**
-	 * Run mode discriminator (pl-0344 step 1 / warren-67b6, step 4 /
-	 * warren-b3b9). `'batch'` is the legacy one-shot dispatch; `'interactive'`
-	 * is the respawn-per-turn primitive. Pinned at row
-	 * creation; warren-side only (burrow doesn't know about run mode).
+	 * Run mode discriminator (pl-0344 step 1 / warren-67b6). Pinned at row
+	 * creation; warren-side only (burrow doesn't know about run mode). The
+	 * retired `interactive` / `conversation` values are gone from the enum
+	 * (warren-d622, warren-ee27), so `batch` is the only member today.
 	 */
-	mode: "batch" | "interactive";
+	mode: RunMode;
 	renderedAgentJson: unknown;
 	state: RunState;
 	failureReason: RunFailureReason | null;
@@ -248,14 +263,8 @@ export interface CreateRunInput {
 	 * after dispatch (pl-bb70 step 4 / warren-46cd).
 	 */
 	seedId?: string;
-	/**
-	 * Run mode (pl-0344 step 4 / warren-b3b9). Defaults to `'batch'`
-	 * server-side. `interactiveAgent` may override `agent` when
-	 * mode is interactive so a UI surface can flip mode without
-	 * re-keying the picker (`agent` stays its batch default).
-	 */
-	mode?: "batch" | "interactive";
-	interactiveAgent?: string;
+	/** Run mode (pl-0344 step 1 / warren-67b6). Defaults to `'batch'` server-side. */
+	mode?: RunMode;
 	dispatcherHandle?: string;
 	/**
 	 * Optional continuation parent (warren-4b11). When set, the new run is
@@ -304,11 +313,34 @@ export interface SteerRunResponse {
 	message: unknown;
 }
 
+/**
+ * Wire envelope of `POST /agents/refresh` (src/server/handlers/agents.ts).
+ * `removed` is `string[]` — the server passes `RefreshResult.removed`
+ * through verbatim (src/registry/refresh.ts) — and `projects` /
+ * `projectErrors` carry the per-project `.canopy/` tier's results (R-03 /
+ * pl-fef5). All four were wrong or missing here before warren-b229.
+ */
 export interface RefreshAgentsResponse {
 	clone: { localPath: string; head: string };
-	registered: { name: string }[];
-	skipped: { name: string; reason: string }[];
-	removed: { name: string }[];
+	registered: AgentRow[];
+	skipped: RefreshSkipped[];
+	removed: string[];
+	projects: RefreshProjectAgentsResponse[];
+	projectErrors: ProjectRefreshErrorRow[];
+}
+
+/** One per-agent registration failure inside a refresh envelope. */
+export interface RefreshSkipped {
+	name: string;
+	reason: string;
+	code: string;
+}
+
+/** One per-project failure inside `POST /agents/refresh` (warren-4f6c). */
+export interface ProjectRefreshErrorRow {
+	projectId: string;
+	code: string;
+	message: string;
 }
 
 /**
@@ -322,7 +354,7 @@ export interface RefreshAgentsResponse {
 export interface RefreshProjectAgentsResponse {
 	projectId: string;
 	registered: AgentRow[];
-	skipped: { name: string; reason: string; code: string }[];
+	skipped: RefreshSkipped[];
 	removed: string[];
 }
 
@@ -343,7 +375,7 @@ export interface RunEvent {
 	seq: number;
 	ts: string;
 	kind: string;
-	stream: "stdout" | "stderr" | "system" | null;
+	stream: EventStream | null;
 	payload: unknown;
 }
 
@@ -598,29 +630,10 @@ export interface RunTriggerResponse {
 /* Plan-runs (warren-f923 / warren-a87f, pl-a258).                          */
 /*                                                                         */
 /* Mirrors the server payload shapes from src/server/handlers/ and the     */
-/* drizzle row types in src/db/schema/sqlite.ts. Kept manually in sync     */
-/* with the wire — src/ui/ is excluded from the root tsconfig and the      */
-/* boundary is the HTTP wire, not a TS import (mx-1bd551).                 */
+/* drizzle row types in src/db/schema/sqlite.ts. The lifecycle vocabulary  */
+/* (`PlanRunState`, `PlanRunChildState`, and their terminal/active sets)   */
+/* is re-exported from `src/core/wire.ts` at the top of this file.         */
 /* ----------------------------------------------------------------------- */
-
-export type PlanRunState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
-
-export const PLAN_RUN_TERMINAL_STATES: readonly PlanRunState[] = [
-	"succeeded",
-	"failed",
-	"cancelled",
-];
-
-export const PLAN_RUN_ACTIVE_STATES: readonly PlanRunState[] = ["queued", "running"];
-
-export type PlanRunChildState =
-	| "pending"
-	| "dispatched"
-	| "running"
-	| "pr_open"
-	| "merged"
-	| "failed"
-	| "skipped";
 
 export interface PlanRunRow {
 	id: string;
