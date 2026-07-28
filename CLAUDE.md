@@ -159,7 +159,7 @@ From the repo root (server + supervisor + CLI):
 ```bash
 bun test                      # Run all tests
 bun test src/foo.test.ts      # Run a single test file
-bun run lint                  # biome + burrow-boundary + version-sync guards
+bun run lint                  # biome + burrow-boundary + version-sync + wire-types + prose guards
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
 ```
@@ -207,6 +207,17 @@ the first failing gate.
 
 `verify` is the standard agent-facing entry point and is always exactly
 `bun run check:all` — neither name may diverge from the other.
+
+Four repo-specific guards ride inside the `lint` gate rather than taking
+a manifest slot of their own, because the canonical `check:all` gate
+vocabulary is frozen: `scripts/check-burrow-boundary.ts`,
+`scripts/check-version-sync.ts`, `scripts/check-wire-types.ts` and
+`scripts/check-prose.ts`. Each is also runnable on its own
+(`bun run check:burrow-boundary`, `bun run check:version-sync`,
+`bun run check:wire-types`, `bun run check:prose`). `check:wire-types`
+(warren-d371) derives its enforced name list from `src/core/wire.ts` at
+run time and fails any file under `src/` that REDECLARES one of those
+names — see "Single source of truth" below.
 
 `check:ci-parity` (`bun scripts/check-ci-parity.ts`, also byte-identical
 to the template copy) imports `GATES` from `check-all.ts`, parses every
@@ -278,10 +289,107 @@ cap) reach a human.
 
 - Strict mode with `noUncheckedIndexedAccess` — always handle possible `undefined` from indexing
 - No `any` — use `unknown` and narrow, or define proper types
-- Server types co-locate with their domain (`src/server/types.ts`,
-  `src/runs/...`, `src/projects/...`); UI types live under `src/ui/src/api/types.ts`
+- **Wire vocabulary is defined once and re-exported outward.** Every
+  enum-shaped value that crosses the HTTP wire lives in `src/core/wire.ts`;
+  the SDK, the drizzle columns and the UI re-export it and never
+  redeclare it. See "Single source of truth" below — this is mechanically
+  enforced, so a second copy fails `bun run lint`.
+- Domain-internal types still co-locate with their domain
+  (`src/server/types.ts`, `src/runs/...`, `src/projects/...`). UI-only
+  view types — component props, form state, chart shapes — stay in
+  `src/ui/`.
 - Import with `.ts` extensions
 - Tab indentation, 100-char line width (enforced by Biome)
+
+## Single source of truth
+
+Each capability in warren has exactly ONE implementation. The domain modules
+(`src/runs/`, `src/projects/`, `src/plan-runs/`, `src/plots/`, …) own the
+logic. The HTTP handlers in `src/server/handlers/` are a thin surface
+over those modules. The CLI (`src/cli/`), the SDK (`src/client/`) and the
+UI (`src/ui/`) are consumers: they call the domain function, or they call
+the HTTP route that calls it. None of them re-implements it, and none of
+them keeps a hand-maintained copy of a type the other side already owns.
+
+**Why this section exists.** The old guidance here told agents that "UI
+types live under `src/ui/src/api/types.ts`", which sanctioned exactly the
+duplication that then drifted: `RunFailureReason` lost `finalize_failed`
+and `evicted` in BOTH the SDK copy and the UI copy, the UI still typed
+the long-deleted `interactive` run mode, and `RefreshAgentsResponse.removed`
+was `{name}[]` in the UI against a server truth of `string[]`
+(warren-b229). A convention that permits a second copy produces a second
+copy.
+
+### The wire vocabulary
+
+`src/core/wire.ts` is the canonical home for the enum-shaped wire values:
+run / plan-run / preview lifecycle states, the failure-cause
+discriminator, run mode, clone kind, event stream, agent source, and the
+steering-inbox classes. The direction is **define there, re-export
+outward**:
+
+- `src/db/schema/columns.ts` does `export * from "../../core/wire.ts"`
+- `src/client/types.ts` and `src/client/types.plan-runs.ts` re-export from it
+- `src/ui/src/api/types.ts` re-exports from it
+
+`src/core/` is warren's dependency-free kernel — it imports nothing.
+That is what lets the Vite-bundled UI reach the same module without
+dragging drizzle and `bun:sqlite` into a browser bundle, and it is why
+the definition cannot live in `src/db/schema/columns.ts` where it started.
+
+`bun run check:wire-types` (`scripts/check-wire-types.ts`, warren-d371)
+holds the line. It derives the enforced name list from `src/core/wire.ts`
+at run time — a hard-coded second list would itself be the drift class the
+guard exists to prevent. Re-export forms pass (`export * from`,
+`export { X } from`, `export type { X } from`, `import { X } from`); a
+redeclaration fails with `file:line — declares "NAME"`. A genuinely
+deliberate local declaration goes in the script's `ALLOW` list with a
+comment saying why.
+
+Two sharp edges worth knowing before you add to the kernel:
+
+- **Cross-package modules need a tsconfig `include` entry.** `src/ui` is
+  a separate composite TypeScript project, so any module it imports from
+  outside its own `src/` must be named in `include` in
+  `src/ui/tsconfig.app.json` (today: `["src", "../core/wire.ts"]`).
+  Without it the UI build fails TS6307 — and only `bun run build:ui`
+  catches that, because the root `tsc --noEmit` excludes `src/ui`.
+- **The guard's `DOMAIN_STEMS` filter is deliberately narrow.** A
+  canonical export whose name carries none of `run`, `inbox`, `clone`,
+  `preview`, `event`, `agent` is NOT enforced — that keeps a
+  generically-named kernel helper (`Status`, `Limits`) from failing an
+  unrelated file. The cost is that a new wire name outside those stems is
+  silently unguarded; widen `DOMAIN_STEMS` when you add one.
+
+### The layering rule
+
+The same principle applies below the type layer. The guards that enforce
+it today both ride inside `bun run lint`:
+
+- **`check:wire-types`** — no second declaration of a canonical wire name.
+- **`check:burrow-boundary`** (`scripts/check-burrow-boundary.ts`,
+  warren-f796) — no direct `src/burrow-client/` or `@os-eco/burrow-cli`
+  import outside the local-topology allowlist.
+
+warren-89a6 generalizes the burrow guard into a data-driven `check:layers`
+gate covering the rest of the module graph.
+
+**Patterns to copy.** `spawnRun` is defined once in
+`src/runs/spawn/dispatch.ts` and imported by five call sites — the
+scheduler, the plan-run dispatcher, and three handler modules — instead of
+each surface growing its own dispatch path. `addProject` is defined once
+in `src/projects/manage.ts` and called by both
+`src/cli/commands/add-project.ts` and `src/server/handlers/projects.ts`,
+so the CLI and the API register a project identically.
+
+**The counter-example to avoid.** `defaultSpawn` exists three times —
+`src/cli/output.ts`, `src/server/main/utils.ts` and
+`src/server/handlers/index.ts` — and every copy carries a comment calling
+the duplication deliberate "so neither surface imports the other". That
+reason does not hold: all three copies already import `resolveSpawnEnv`
+from `src/projects/clone.ts`, so the coupling they claim to avoid is
+already there. A comment asserting that a copy is intentional is not
+evidence that it is. warren-032a de-duplicates it.
 
 ## Version Management
 
@@ -317,8 +425,8 @@ mention in the README. The README locator is imported from
 `version-bump.ts` so the gate and the bumper can never disagree about
 where the version lives. Because the canonical `check:all` gate
 vocabulary is frozen, it is chained into `bun run lint` (alongside
-`scripts/check-burrow-boundary.ts`) instead of getting its own manifest
-slot.
+`scripts/check-burrow-boundary.ts`, `scripts/check-wire-types.ts` and
+`scripts/check-prose.ts`) instead of getting its own manifest slot.
 
 ## Git identities (Article VII)
 

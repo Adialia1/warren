@@ -50,7 +50,8 @@ bun run test:coverage         # bun test --coverage (text + lcov -> coverage/)
 bun run check:coverage        # tests + coverage + ratchet enforcement
 bun run report:test-timing    # print slowest suites/tests from junit.xml
 bun run report:quality-metrics # print code-quality metrics summary (coverage + complexity + ratchets)
-bun run lint                  # biome + burrow-boundary + version-sync guards
+bun run lint                  # biome + burrow-boundary + version-sync + wire-types + prose guards
+bun run check:wire-types      # canonical wire vocabulary guard (also inside lint)
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
 ```
@@ -114,6 +115,7 @@ Details on the additional checks:
   the allowlist.
 - **`check:agents`** — validates that `AGENTS.md` references
   (`bun run <X>` commands and backtick-quoted paths) still exist.
+- **Four guards ride inside `lint`** rather than taking a manifest slot of their own, because the canonical `check:all` gate vocabulary is frozen. They are `scripts/check-burrow-boundary.ts`, `scripts/check-version-sync.ts`, `scripts/check-wire-types.ts` and `scripts/check-prose.ts`. Each one also runs on its own under the matching `check:` script name. See "Single source of truth" below for the first and third.
 
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, cognitive
 complexity ≤ 15) enforces a project-wide complexity ceiling. New code
@@ -210,11 +212,43 @@ with lint warnings; fix at write time or promote to error in `biome.json`.
 - Strict mode with `noUncheckedIndexedAccess` — always handle possible
   `undefined` from indexing
 - No `any` — use `unknown` and narrow, or define a proper type
-- Server types co-locate with their domain (`src/server/types.ts`,
-  `src/runs/...`, `src/projects/...`); UI types live in
-  `src/ui/src/api/types.ts`
+- **Define wire vocabulary once, then re-export it outward.** Every enum-shaped value that crosses the HTTP wire lives in `src/core/wire.ts`. The SDK, the drizzle columns and the UI re-export it. None of them declares a second copy, and `bun run lint` fails if one does. See "Single source of truth" below.
+- **Domain-internal types still co-locate with their domain** (`src/server/types.ts`, `src/runs/...`, `src/projects/...`). UI-only view types stay in `src/ui/` — component props, form state, chart shapes.
 - Import with `.ts` extensions
 - Tab indentation, 100-char line width (enforced by Biome)
+
+## Single source of truth
+
+Each capability in warren has exactly ONE implementation. The domain modules under `src/runs/`, `src/projects/` and `src/plan-runs/` own the logic. The HTTP handlers in `src/server/handlers/` are a thin surface over them. The CLI, the SDK and the UI are consumers that call the domain function or the HTTP route that wraps it. None of them re-implements it, and none of them keeps a hand-maintained copy of a type the other side already owns.
+
+The old wording here told agents to keep UI types in a separate file, which sanctioned the duplication that then drifted. `RunFailureReason` lost `finalize_failed` and `evicted` in BOTH the SDK copy and the UI copy. The UI still typed a run mode the server deleted. `RefreshAgentsResponse.removed` read as an object array in the UI against a server truth of `string[]`. warren-b229 repaired all three.
+
+### The wire vocabulary
+
+`src/core/wire.ts` is the canonical home for every enum-shaped value that crosses the HTTP wire. That covers run, plan-run and preview lifecycle states, the failure-cause discriminator, run mode, clone kind, event stream, agent source, and the steering-inbox classes. The direction is define there, re-export outward.
+
+- `src/db/schema/columns.ts` re-exports the whole module with `export * from "../../core/wire.ts"`.
+- `src/client/types.ts` and `src/client/types.plan-runs.ts` re-export the names they need.
+- `src/ui/src/api/types.ts` re-exports the same names and declares none of them.
+
+`src/core/` imports nothing. A kernel with no imports is what lets the Vite-bundled UI reach the same module. Neither drizzle nor `bun:sqlite` reaches the browser bundle.
+
+Two guards hold the rule, and both run inside `bun run lint`:
+
+- `check:wire-types` (`scripts/check-wire-types.ts`, warren-d371) reads the canonical name list out of `src/core/wire.ts` at run time. Re-export forms pass. A redeclaration fails with `file:line — declares "NAME"`. Put a deliberate local copy in the script's `ALLOW` list with a comment saying why.
+- `check:burrow-boundary` (`scripts/check-burrow-boundary.ts`, warren-f796) refuses a direct `src/burrow-client/` or `@os-eco/burrow-cli` import outside the local-topology allowlist. warren-89a6 widens it into a data-driven `check:layers` gate.
+
+Two sharp edges:
+
+- A module that `src/ui` imports from outside its own `src/` must appear in `include` in `src/ui/tsconfig.app.json`. The UI is a separate composite project, so a missing entry fails the build with TS6307. Only `bun run build:ui` catches that, because the root typecheck skips `src/ui`.
+- `check:wire-types` only enforces canonical names that carry one of its `DOMAIN_STEMS`: run, inbox, clone, preview, event, agent. A new wire name outside those stems stays unguarded until you widen the list.
+
+### Patterns to copy
+
+- `spawnRun` lives once in `src/runs/spawn/dispatch.ts`. Five call sites import it — the scheduler, the plan-run dispatcher and three handler modules.
+- `addProject` lives once in `src/projects/manage.ts`. Both `src/cli/commands/add-project.ts` and `src/server/handlers/projects.ts` call it, so the CLI and the API register a project the same way.
+
+The counter-example to avoid: `defaultSpawn` exists three times, in `src/cli/output.ts`, `src/server/main/utils.ts` and `src/server/handlers/index.ts`. Each copy carries a comment that calls the duplication deliberate "so neither surface imports the other". That reason does not hold, because all three already import `resolveSpawnEnv` from `src/projects/clone.ts`. A comment asserting that a copy is intentional is not evidence that it is. warren-032a removes the copies.
 
 ## Version management
 
