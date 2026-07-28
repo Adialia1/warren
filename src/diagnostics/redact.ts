@@ -16,7 +16,7 @@
  * the HTTP layer uses for unhandled 500s (`renderError` + `errorLogFields`,
  * warren-4385).
  *
- * Not to be confused with `src/server/main/redact.ts`, which is pino's
+ * Not to be confused with `src/observability/log-redact.ts`, which is pino's
  * secret-field censoring policy for structured log objects.
  */
 

@@ -26,7 +26,7 @@
  *      no-op" warning is exactly this drift class, so it gets the same
  *      treatment.
  *
- * Chained into `bun run lint` (alongside check-burrow-boundary.ts)
+ * Chained into `bun run lint` (alongside check-layers.ts)
  * rather than registered as its own gate: `scripts/check-all.ts` is
  * byte-identical to the l5-toolkit template and its canonical gate
  * vocabulary is frozen, so a repo-specific assertion folds into an

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import pino from "pino";
-import { LOG_REDACT_OPTIONS, LOG_REDACT_PATHS } from "./redact.ts";
+import { LOG_REDACT_OPTIONS, LOG_REDACT_PATHS } from "./log-redact.ts";
 
 /** Capture pino's JSON output by pointing it at an in-memory sink. */
 function captureLogger(): { logger: pino.Logger; lines: () => Record<string, unknown>[] } {

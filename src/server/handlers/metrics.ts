@@ -16,11 +16,11 @@
  *   - **Counters** from the in-process `MetricsRegistry` (log-line rates by
  *     level, fed by the pino sink). Absent registry → counters omitted.
  *
- * When `deps.db` is unwired (tests), the DB gauges are skipped and only the
- * bridge gauge + any counters render, so the endpoint never throws.
+ * When `deps.dbAdapter` is unwired (tests), the DB gauges are skipped and
+ * only the bridge gauge + any counters render, so the endpoint never throws.
+ * The adapter is boot-wired (warren-89a6); this handler does not build one.
  */
 
-import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { aggregateRunCost, countRunsByState } from "../../db/repos/runs-stats.ts";
 import type { CounterSnapshot } from "../../observability/metrics-registry.ts";
 import {
@@ -37,8 +37,8 @@ export function metricsHandler(deps: ServerDeps): RouteHandler {
 	return async () => {
 		const metrics: PromMetric[] = [];
 
-		if (deps.db !== undefined) {
-			const adapter = DrizzleAdapter.for(deps.db);
+		const adapter = deps.dbAdapter;
+		if (adapter !== undefined) {
 			const [byState, cost] = await Promise.all([
 				countRunsByState(adapter),
 				aggregateRunCost(adapter),

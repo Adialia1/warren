@@ -10,15 +10,18 @@
  */
 
 import type { AnyWarrenDb } from "../db/client.ts";
+import type { DrizzleAdapter } from "../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../db/repos/index.ts";
-import type { RunMode } from "../db/schema.ts";
 import type { PreviewAuth } from "../preview/cookie.ts";
+import type { RunPreviewsRepo } from "../preview/eviction/types.ts";
+import type { PreviewProxyHandler } from "../preview/proxy/types.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import type { refreshProject } from "../projects/manage.ts";
 import type { CanopyRegistryConfig } from "../registry/config.ts";
 import type { RunEventBroker } from "../runs/events.ts";
 import type { AutoOpenPrConfig } from "../runs/pr.ts";
+import type { BridgeRegistry } from "../runs/stream/types.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { PreviewMode, WarrenConfigCache } from "../warren-config/index.ts";
@@ -148,6 +151,21 @@ export interface ServerDeps {
 	 * Tests can omit; the probe degrades to `ok: true`/"no db wired" when absent.
 	 */
 	readonly db?: AnyWarrenDb;
+	/**
+	 * Drizzle adapter over `db`, built ONCE at boot (warren-89a6). Handlers are
+	 * a thin surface over the domain: they consume this, they never call
+	 * `DrizzleAdapter.for(deps.db)` per request — `check:layers` fails the build
+	 * if one does. Present exactly when `db` is; tests that wire neither keep
+	 * the handlers' existing degraded paths.
+	 */
+	readonly dbAdapter?: DrizzleAdapter;
+	/**
+	 * Dialect-polymorphic run-previews repo over `db`, built ONCE at boot
+	 * (warren-89a6). Same rule as `dbAdapter`: the preview-teardown handler and
+	 * the `/readyz` preview probes consume it instead of calling
+	 * `createRunPreviewsRepo(deps.db)` on every request.
+	 */
+	readonly runPreviews?: RunPreviewsRepo;
 	/** Boot-resolved runtime provider (`resolveRuntimeProvider`, honoring
 	 * `WARREN_RUNTIME`). REQUIRED (warren-f796) — handlers route through it, no
 	 * burrow-client fallback (`local` ⇒ LocalProvider, `k8s` ⇒ K8sProvider). */
@@ -302,25 +320,12 @@ export interface ServerDeps {
 }
 
 /**
- * The bridge registry. Per-run bridges are created when `POST /runs`
- * lands and on warren startup via `recoverActiveRunStreams`; the
- * registry tracks them so server shutdown can abort everyone in one
- * pass. Concrete impl lives in `./bridges.ts`.
+ * The bridge registry. Declared in the run-stream domain
+ * (`src/runs/stream/types.ts`) alongside the bridge it registers, and
+ * re-exported here for the server modules that consume it (warren-89a6).
+ * Concrete impl lives in `./bridges.ts`.
  */
-export interface BridgeRegistry {
-	/**
-	 * Start a bridge for the given run; idempotent against a running bridge.
-	 * `burrowId` is required so the bridge can resolve the owning worker via
-	 * `BurrowClient.clientFor` (warren-c0c9). `mode` (warren-df71) makes a
-	 * `'conversation'` run keep-alive across pi `agent_end` turn boundaries;
-	 * omit / `'batch'` retains the prior one-shot terminal behaviour.
-	 */
-	start(runId: string, burrowRunId: string, burrowId: string, mode?: RunMode): void;
-	/** Abort all in-flight bridges and await their drain. */
-	stopAll(): Promise<void>;
-	/** Test/diagnostic surface — number of currently-attached bridges. */
-	size(): number;
-}
+export type { BridgeRegistry };
 
 export interface ServeOptions {
 	transport?: Transport;
@@ -345,8 +350,12 @@ export interface ServeOptions {
 	previewProxy?: PreviewProxyHandler;
 }
 
-/** Host-match preview proxy preamble. See `src/preview/proxy/index.ts`. */
-export type PreviewProxyHandler = (request: Request, url: URL) => Promise<Response | null>;
+/**
+ * Host-match preview proxy preamble. Declared in the preview domain
+ * (`src/preview/proxy/types.ts`) and re-exported here for the server wiring
+ * that consumes it (warren-89a6).
+ */
+export type { PreviewProxyHandler };
 
 export interface ServeHandle {
 	readonly transport: Transport;

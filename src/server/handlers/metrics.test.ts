@@ -7,6 +7,7 @@ import { RunEventBroker } from "../../runs/index.ts";
 import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { bearerAuth } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
+import { createDbSeams } from "../db-seams.ts";
 import { startServer } from "../server.ts";
 import { EventStreamLimiter } from "../stream-limits.ts";
 import type { ServeHandle, ServerDeps } from "../types.ts";
@@ -39,6 +40,7 @@ async function depsFor(
 	return {
 		repos,
 		db,
+		...createDbSeams(db),
 		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		broker,
 		bridges,

@@ -250,3 +250,30 @@ export interface BurrowTerminalSnapshot {
 	 */
 	readonly failureReason?: RunFailureReason;
 }
+
+/**
+ * The bridge registry. Per-run bridges are created when `POST /runs`
+ * lands and on warren startup via `recoverActiveRunStreams`; the
+ * registry tracks them so server shutdown can abort everyone in one
+ * pass. Concrete impl lives in `src/server/bridges.ts`.
+ *
+ * The interface lives here, with the bridge it registers, rather than in
+ * `src/server/types.ts` (warren-89a6). The plan-run dispatcher needs the
+ * type and is domain code, so declaring it on the HTTP surface made a
+ * domain module import the server. `src/server/types.ts` re-exports it,
+ * so the ~20 server-side consumers are unchanged.
+ */
+export interface BridgeRegistry {
+	/**
+	 * Start a bridge for the given run; idempotent against a running bridge.
+	 * `burrowId` is required so the bridge can resolve the owning worker via
+	 * `BurrowClient.clientFor` (warren-c0c9). `mode` (warren-df71) makes a
+	 * `'conversation'` run keep-alive across pi `agent_end` turn boundaries;
+	 * omit / `'batch'` retains the prior one-shot terminal behaviour.
+	 */
+	start(runId: string, burrowRunId: string, burrowId: string, mode?: RunMode): void;
+	/** Abort all in-flight bridges and await their drain. */
+	stopAll(): Promise<void>;
+	/** Test/diagnostic surface — number of currently-attached bridges. */
+	size(): number;
+}

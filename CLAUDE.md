@@ -159,7 +159,7 @@ From the repo root (server + supervisor + CLI):
 ```bash
 bun test                      # Run all tests
 bun test src/foo.test.ts      # Run a single test file
-bun run lint                  # biome + burrow-boundary + version-sync + wire-types + prose guards
+bun run lint                  # biome + layers + version-sync + wire-types + prose guards
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
 ```
@@ -210,10 +210,10 @@ the first failing gate.
 
 Four repo-specific guards ride inside the `lint` gate rather than taking
 a manifest slot of their own, because the canonical `check:all` gate
-vocabulary is frozen: `scripts/check-burrow-boundary.ts`,
+vocabulary is frozen: `scripts/check-layers.ts`,
 `scripts/check-version-sync.ts`, `scripts/check-wire-types.ts` and
 `scripts/check-prose.ts`. Each is also runnable on its own
-(`bun run check:burrow-boundary`, `bun run check:version-sync`,
+(`bun run check:layers`, `bun run check:version-sync`,
 `bun run check:wire-types`, `bun run check:prose`). `check:wire-types`
 (warren-d371) derives its enforced name list from `src/core/wire.ts` at
 run time and fails any file under `src/` that REDECLARES one of those
@@ -367,12 +367,40 @@ The same principle applies below the type layer. The guards that enforce
 it today both ride inside `bun run lint`:
 
 - **`check:wire-types`** — no second declaration of a canonical wire name.
-- **`check:burrow-boundary`** (`scripts/check-burrow-boundary.ts`,
-  warren-f796) — no direct `src/burrow-client/` or `@os-eco/burrow-cli`
-  import outside the local-topology allowlist.
+- **`check:layers`** (`scripts/check-layers.ts`, warren-89a6) — no import
+  that points the wrong way across a declared seam.
 
-warren-89a6 generalizes the burrow guard into a data-driven `check:layers`
-gate covering the rest of the module graph.
+`check:layers` reads its rules from `scripts/layer-rules.json`, so a new
+seam is a data edit and is born enforced. Seven seams ship today:
+
+- The two burrow boundaries it absorbed from the retired
+  `check-burrow-boundary.ts` (warren-f796) — no direct
+  `src/burrow-client/` or `@os-eco/burrow-cli` import outside the
+  local-topology allowlist.
+- **Domain owns the logic.** `src/runs/`, `src/projects/`,
+  `src/plan-runs/`, `src/registry/`, `src/db/`, `src/runtime/`,
+  `src/preview/`, `src/triggers/` and `src/observability/` may not import
+  `src/server/**` or `src/cli/**`.
+- **The CLI is a consumer.** `src/cli/**` may not import `src/server/**`.
+  `src/cli/commands/serve.ts` is the one allowed exception: booting the
+  server is that command's whole job.
+- **Handlers are a thin surface.** `src/server/handlers/**` may not import
+  `src/db/schema/**`, and may not build a repo or a drizzle adapter out of
+  `deps.db`. Consume the boot-wired seams — `deps.repos`,
+  `deps.dbAdapter`, `deps.runPreviews` — and add a new one in
+  `src/server/db-seams.ts`.
+- **The kernel imports nothing.** `src/core/` may import only itself.
+
+A rule fires with `file:line` plus the rule's `why` string. A deliberate
+exception goes in that rule's `allow` list in the manifest with a `why`
+saying what makes it legitimate — JSON has no comments, so the reason is
+a field.
+
+Two things the guard cannot see, by design: matching is per line and
+lexical, so a dynamic `await import("…")` and a laundered re-export (the
+forbidden module reached through a permitted one that re-exports it) both
+slip through. It is built to stop the accidental regression, not an
+adversary.
 
 **Patterns to copy.** `spawnRun` is defined once in
 `src/runs/spawn/dispatch.ts` and imported by five call sites — the
@@ -425,7 +453,7 @@ mention in the README. The README locator is imported from
 `version-bump.ts` so the gate and the bumper can never disagree about
 where the version lives. Because the canonical `check:all` gate
 vocabulary is frozen, it is chained into `bun run lint` (alongside
-`scripts/check-burrow-boundary.ts`, `scripts/check-wire-types.ts` and
+`scripts/check-layers.ts`, `scripts/check-wire-types.ts` and
 `scripts/check-prose.ts`) instead of getting its own manifest slot.
 
 ## Git identities (Article VII)

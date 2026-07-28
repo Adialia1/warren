@@ -5,6 +5,7 @@ import type { PreviewAuth } from "../../preview/cookie.ts";
 import { RunEventBroker } from "../../runs/index.ts";
 import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { createBridgeRegistry } from "../bridges.ts";
+import { createDbSeams } from "../db-seams.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
 
 export const TOKEN = "test-token-very-secret-1234567890abcdef";
@@ -52,7 +53,7 @@ export async function depsFor(
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
 		logger: silentLogger,
 		uiDistDir: null,
-		...(db !== undefined ? { db } : {}),
+		...(db !== undefined ? { db, ...createDbSeams(db) } : {}),
 		...previewExtras,
 	};
 	return { deps, bridges };

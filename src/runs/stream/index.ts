@@ -82,6 +82,7 @@ export {
 export { detectRuntimeTerminal, isPiAgentEnd } from "./terminal-detect.ts";
 export {
 	type BridgeLogger,
+	type BridgeRegistry,
 	type BridgeRunStreamInput,
 	type BridgeRunStreamResult,
 	DEFAULT_RUN_STATE_DRAIN_MS,
