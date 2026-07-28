@@ -12,7 +12,7 @@
 
 import { Command } from "commander";
 import { WarrenClient } from "../client/index.ts";
-import type { PlanRunState } from "../client/types.ts";
+import { PLAN_RUN_STATES, type PlanRunState } from "../core/wire.ts";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
@@ -409,18 +409,15 @@ export function parsePlanRunOutput(value: string | undefined): PlanRunOutput {
 	return value === "pretty" ? "pretty" : "ndjson";
 }
 
-/** The set of recognised plan-run states for the `plan list --state` filter. */
-const PLAN_RUN_STATES: ReadonlySet<string> = new Set([
-	"queued",
-	"running",
-	"succeeded",
-	"failed",
-	"cancelled",
-]);
-
-/** Coerce a `--state` flag value to a {@link PlanRunState}, or undefined when unset/invalid. */
+/**
+ * Coerce a `--state` flag value to a {@link PlanRunState}, or undefined when
+ * unset/invalid. Membership is tested against the canonical tuple rather than
+ * a locally rebuilt `Set` — that copy was drift waiting to happen (warren-d371).
+ */
 export function parsePlanRunState(value: string | undefined): PlanRunState | undefined {
-	return value !== undefined && PLAN_RUN_STATES.has(value) ? (value as PlanRunState) : undefined;
+	return value !== undefined && (PLAN_RUN_STATES as readonly string[]).includes(value)
+		? (value as PlanRunState)
+		: undefined;
 }
 
 if (import.meta.main) {
