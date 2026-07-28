@@ -52,7 +52,7 @@
 		"check:agents": "bun run scripts/validate-agents-md.ts",
 		"check:size": "bun run scripts/check-file-sizes.ts",
 		"check:debt": "bun run scripts/check-debt-markers.ts",
-		"check:dups": "jscpd",
+		"check:dups": "jscpd && bun run scripts/check-dups-scoped.ts",
 		"check:deps": "knip --dependencies",
 		"check:bundle-size": "bun run scripts/check-bundle-size.ts --build",
 		"gen:docs": "bun run scripts/generate-docs.ts",

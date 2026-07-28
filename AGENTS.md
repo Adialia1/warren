@@ -260,7 +260,9 @@ Two sharp edges:
 - `spawnRun` lives once in `src/runs/spawn/dispatch.ts`. Five call sites import it — the scheduler, the plan-run dispatcher and three handler modules.
 - `addProject` lives once in `src/projects/manage.ts`. Both `src/cli/commands/add-project.ts` and `src/server/handlers/projects.ts` call it, so the CLI and the API register a project the same way.
 
-The counter-example to avoid: `defaultSpawn` exists three times, in `src/cli/output.ts`, `src/server/main/utils.ts` and `src/server/handlers/index.ts`. Each copy carries a comment that calls the duplication deliberate "so neither surface imports the other". That reason does not hold, because all three already import `resolveSpawnEnv` from `src/projects/clone.ts`. A comment asserting that a copy is intentional is not evidence that it is. warren-032a removes the copies.
+- `defaultSpawn` lives once in `src/projects/clone.ts`, beside the `SpawnFn` contract and `resolveSpawnEnv`. `src/cli/output.ts`, `src/server/main/utils.ts` and `src/server/handlers/index.ts` re-export it.
+
+The counter-example to avoid: `defaultSpawn` used to exist three times, once per surface. Each copy carried a comment that called the duplication deliberate "so neither surface imports the other". That reason did not hold, because all three already imported `resolveSpawnEnv` from `src/projects/clone.ts`. A comment asserting that a copy is intentional is not evidence that it is. warren-032a removed the copies.
 
 ## Version management
 

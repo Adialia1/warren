@@ -433,14 +433,16 @@ in `src/projects/manage.ts` and called by both
 `src/cli/commands/add-project.ts` and `src/server/handlers/projects.ts`,
 so the CLI and the API register a project identically.
 
-**The counter-example to avoid.** `defaultSpawn` exists three times —
-`src/cli/output.ts`, `src/server/main/utils.ts` and
-`src/server/handlers/index.ts` — and every copy carries a comment calling
-the duplication deliberate "so neither surface imports the other". That
-reason does not hold: all three copies already import `resolveSpawnEnv`
-from `src/projects/clone.ts`, so the coupling they claim to avoid is
+**The counter-example to avoid.** `defaultSpawn` used to exist three
+times — `src/cli/output.ts`, `src/server/main/utils.ts` and
+`src/server/handlers/index.ts` — and every copy carried a comment calling
+the duplication deliberate "so neither surface imports the other". The
+reason did not hold: all three copies already imported `resolveSpawnEnv`
+from `src/projects/clone.ts`, so the coupling they claimed to avoid was
 already there. A comment asserting that a copy is intentional is not
-evidence that it is. warren-032a de-duplicates it.
+evidence that it is. warren-032a moved the body next to `resolveSpawnEnv`
+in `src/projects/clone.ts`; the three surfaces now re-export the one
+definition.
 
 ## Version Management
 
