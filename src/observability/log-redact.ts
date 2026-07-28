@@ -2,6 +2,13 @@
  * Central pino redaction config for warren's loggers (warren-b2dd /
  * pl-f700 step 6).
  *
+ * Lives under `src/observability/` because logging policy is an
+ * observability concern, not an HTTP one. It used to sit in
+ * `src/server/main/`, which forced `./error-tracking.ts` to import the
+ * server from the observability layer (warren-89a6). Its consumers are the
+ * server boot logger, the supervisor, the event projection and the Sentry
+ * scrubber.
+ *
  * Defense-in-depth: structured log objects should never carry a raw
  * GitHub token, bearer credential, or other secret-shaped value even
  * when a caller accidentally logs a whole config/headers object. pino's

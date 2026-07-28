@@ -1,6 +1,5 @@
 import { ValidationError } from "../../../core/errors.ts";
 import type { PreviewAuth } from "../../../preview/cookie.ts";
-import { createRunPreviewsRepo } from "../../../preview/eviction/index.ts";
 import { teardownPreview } from "../../../preview/teardown.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
@@ -153,7 +152,7 @@ function resolvePathPreviewRedirect(
  *
  * Responds 200 on every CAS outcome (`torn-down`, `already-torn-down`,
  * `already-failed`, `never-launched`); 404 on unknown runId; 503 when
- * `deps.db` is undefined (no repo layer wired). Works on both sqlite
+ * `deps.runPreviews` is unwired (no repo layer). Works on both sqlite
  * and postgres dialects — `createRunPreviewsRepo` is dialect-
  * polymorphic (warren-adfb), so the eviction-worker CAS path that
  * teardown rides on is already exercised on pg in production. The
@@ -166,7 +165,8 @@ export function previewTeardownHandler(deps: ServerDeps): RouteHandler {
 		const body = await readJsonBodyOrEmpty(ctx);
 		const actor = body !== null ? optionalString(body, "actor") : undefined;
 
-		if (deps.db === undefined) {
+		const previews = deps.runPreviews;
+		if (previews === undefined) {
 			return jsonResponse(503, {
 				error: {
 					code: "preview_teardown_unavailable",
@@ -175,7 +175,6 @@ export function previewTeardownHandler(deps: ServerDeps): RouteHandler {
 			});
 		}
 
-		const previews = createRunPreviewsRepo(deps.db);
 		const result = await teardownPreview({
 			runId,
 			repos: deps.repos,

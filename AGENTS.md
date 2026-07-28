@@ -50,7 +50,7 @@ bun run test:coverage         # bun test --coverage (text + lcov -> coverage/)
 bun run check:coverage        # tests + coverage + ratchet enforcement
 bun run report:test-timing    # print slowest suites/tests from junit.xml
 bun run report:quality-metrics # print code-quality metrics summary (coverage + complexity + ratchets)
-bun run lint                  # biome + burrow-boundary + version-sync + wire-types + prose guards
+bun run lint                  # biome + layers + version-sync + wire-types + prose guards
 bun run check:wire-types      # canonical wire vocabulary guard (also inside lint)
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
@@ -115,7 +115,7 @@ Details on the additional checks:
   the allowlist.
 - **`check:agents`** — validates that `AGENTS.md` references
   (`bun run <X>` commands and backtick-quoted paths) still exist.
-- **Four guards ride inside `lint`** rather than taking a manifest slot of their own, because the canonical `check:all` gate vocabulary is frozen. They are `scripts/check-burrow-boundary.ts`, `scripts/check-version-sync.ts`, `scripts/check-wire-types.ts` and `scripts/check-prose.ts`. Each one also runs on its own under the matching `check:` script name. See "Single source of truth" below for the first and third.
+- **Four guards ride inside `lint`** rather than taking a manifest slot of their own, because the canonical `check:all` gate vocabulary is frozen. They are `scripts/check-layers.ts`, `scripts/check-version-sync.ts`, `scripts/check-wire-types.ts` and `scripts/check-prose.ts`. Each one also runs on its own under the matching `check:` script name. See "Single source of truth" below for the first and third.
 
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, cognitive
 complexity ≤ 15) enforces a project-wide complexity ceiling. New code
@@ -236,7 +236,12 @@ The old wording here told agents to keep UI types in a separate file, which sanc
 Two guards hold the rule, and both run inside `bun run lint`:
 
 - `check:wire-types` (`scripts/check-wire-types.ts`, warren-d371) reads the canonical name list out of `src/core/wire.ts` at run time. Re-export forms pass. A redeclaration fails with `file:line — declares "NAME"`. Put a deliberate local copy in the script's `ALLOW` list with a comment saying why.
-- `check:burrow-boundary` (`scripts/check-burrow-boundary.ts`, warren-f796) refuses a direct `src/burrow-client/` or `@os-eco/burrow-cli` import outside the local-topology allowlist. warren-89a6 widens it into a data-driven `check:layers` gate.
+- `check:layers` (`scripts/check-layers.ts`, warren-89a6) refuses an import that points the wrong way across a declared seam. Its rules live in `scripts/layer-rules.json`, so a new seam is a data edit, not a new script. A hit prints `file:line` plus the rule's `why`. Put a deliberate exception in that rule's `allow` list with a `why` field. Seven seams ship today:
+  - The two burrow boundaries it took over from the retired burrow-boundary guard (warren-f796). No direct `src/burrow-client/` or `@os-eco/burrow-cli` import outside the local-topology allowlist.
+  - Domain modules must not import `src/server/**` or `src/cli/**`.
+  - `src/cli/**` must not import `src/server/**`. `src/cli/commands/serve.ts` is the one exception, because booting the server is that command's whole job.
+  - `src/server/handlers/**` must not import `src/db/schema/**`, and must not build a repo out of `deps.db`. Use the boot-wired seams `deps.repos`, `deps.dbAdapter` and `deps.runPreviews`.
+  - `src/core/` may import only itself.
 
 Two sharp edges:
 

@@ -27,9 +27,9 @@ import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { resolveTargetProject } from "../projects/resolve-target.ts";
 import { spawnRun } from "../runs/index.ts";
+import type { BridgeRegistry } from "../runs/stream/types.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import { readTargetRepo, type SeedsCliDeps } from "../seeds-cli/index.ts";
-import type { BridgeRegistry } from "../server/types.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import type {
 	ChildExecution,

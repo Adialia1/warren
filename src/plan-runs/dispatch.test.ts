@@ -12,8 +12,8 @@ import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { SpawnRunInput, SpawnRunResult } from "../runs/index.ts";
+import type { BridgeRegistry } from "../runs/stream/types.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
-import type { BridgeRegistry } from "../server/types.ts";
 import { createWarrenConfigCache } from "../warren-config/index.ts";
 import { createPlanRunSpawn } from "./dispatch.ts";
 

@@ -6,7 +6,6 @@
  * diagnostic checks subsystem.
  */
 
-import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import {
 	checkBwrap,
 	checkCanopyClean,
@@ -20,7 +19,7 @@ import {
 	type DiagnosticCheck,
 } from "../../diagnostics/checks.ts";
 import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.ts";
-import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
+import { DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
@@ -124,27 +123,27 @@ async function previewPortAllocatorReadyzCheck(deps: ServerDeps): Promise<Diagno
 	// doesn't re-parse env per request. Tests omit deps.previewPortRange;
 	// fall back to defaults so the probe still exercises the codepath.
 	const range = deps.previewPortRange ?? DEFAULT_PREVIEW_PORT_RANGE;
-	if (deps.db === undefined) {
+	if (deps.dbAdapter === undefined) {
 		return {
 			name: "preview_port_allocator",
 			ok: true,
 			message: `no db handle wired (range ${range.start}-${range.end})`,
 		};
 	}
-	const allocator = new PreviewPortAllocator(DrizzleAdapter.for(deps.db), range);
+	const allocator = new PreviewPortAllocator(deps.dbAdapter, range);
 	return checkPreviewPortAllocator({ probe: allocator, log: deps.logger });
 }
 
 async function previewMaxLiveReadyzCheck(deps: ServerDeps): Promise<DiagnosticCheck> {
 	const maxLive = deps.previewMaxLive ?? DEFAULT_MAX_LIVE;
-	if (deps.db === undefined) {
+	const previews = deps.runPreviews;
+	if (previews === undefined) {
 		return {
 			name: "preview_max_live",
 			ok: true,
 			message: `no db handle wired (cap ${maxLive})`,
 		};
 	}
-	const previews = createRunPreviewsRepo(deps.db);
 	return checkPreviewMaxLive({
 		probe: { count: () => previews.countActivePreviews() },
 		maxLive,

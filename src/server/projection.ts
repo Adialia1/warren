@@ -20,7 +20,7 @@
  *    construction site.
  *
  * This is response-body redaction and has nothing to do with
- * `src/server/main/redact.ts`, which redacts pino log records.
+ * `src/observability/log-redact.ts`, which redacts pino log records.
  */
 
 import type { Actor } from "./types.ts";

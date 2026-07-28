@@ -20,6 +20,7 @@ import type { PodAdmissionSource } from "../../runtime/k8s/admission.ts";
 import type { PodMetricsSource } from "../../runtime/k8s/pod-metrics.ts";
 import type { PodCacheReader } from "../../runtime/k8s/pod-watcher.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
+import { createDbSeams } from "../db-seams.ts";
 import { IdempotencyStore } from "../idempotency.ts";
 import type { PublicAllowlist } from "../public-allowlist.ts";
 import { EventStreamLimiter, type EventStreamLimits } from "../stream-limits.ts";
@@ -134,6 +135,10 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	return {
 		repos,
 		db,
+		// Persistence seams derived from `db` ONCE here (warren-89a6). The HTTP
+		// handlers are a thin surface: `check:layers` forbids them building a
+		// drizzle adapter or a repo out of `deps.db` per request.
+		...createDbSeams(db),
 		runtimeProvider,
 		...(burrowProbe !== undefined ? { burrowProbe } : {}),
 		broker,

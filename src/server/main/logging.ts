@@ -8,10 +8,10 @@
  */
 
 import pino from "pino";
+import { LOG_REDACT_OPTIONS } from "../../observability/log-redact.ts";
 import { forwardLogToSinks, type LogSinks } from "../../observability/log-sink.ts";
 import type { EnvLike } from "../config.ts";
 import type { Logger } from "../types.ts";
-import { LOG_REDACT_OPTIONS } from "./redact.ts";
 
 /**
  * Construct warren's root pino logger with the shared secret-redaction

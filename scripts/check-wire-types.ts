@@ -38,7 +38,7 @@
  * warren-b229 drifts lived. Test files and test helpers are exempt: a fixture
  * legitimately declares a narrowed local copy.
  *
- * Chained into `bun run lint` (alongside check-burrow-boundary.ts and
+ * Chained into `bun run lint` (alongside check-layers.ts and
  * check-version-sync.ts) rather than registered as its own gate:
  * `scripts/check-all.ts` is byte-identical to the l5-toolkit template and its
  * gate vocabulary is frozen, so a repo-specific assertion folds into an

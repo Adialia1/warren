@@ -45,7 +45,7 @@
  * promise that arbitrary agent output is safe to expose.
  */
 
-import { SECRET_FIELDS } from "../../main/redact.ts";
+import { SECRET_FIELDS } from "../../../observability/log-redact.ts";
 import { isPublicOnly } from "../../projection.ts";
 import type { Actor } from "../../types.ts";
 
