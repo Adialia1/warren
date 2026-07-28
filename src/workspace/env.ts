@@ -21,8 +21,7 @@
  * warren's workspace cluster. Two adaptations: the error class now comes from
  * `src/workspace/errors.ts`, and the config shape is a neutral structural type
  * (`WorkspaceEnvConfig`) covering only the fields this function reads — rather
- * than importing burrow's `BurrowToml` schema. See
- * `docs/design/k8s-migration-plan.md` §5.A. No burrow-repo imports.
+ * than importing burrow's `BurrowToml` schema. No burrow-repo imports.
  */
 
 import { SecretResolutionError } from "./errors.ts";

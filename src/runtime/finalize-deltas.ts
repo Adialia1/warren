@@ -32,8 +32,8 @@ export interface MulchDeltaFile {
 /**
  * mulch expertise LWW-merge result — mirrors `MulchMergeResult`
  * (`{updated,skipped,appended}`) plus the per-file merged bodies
- * `mergeMulchFile` produces. "real effort" per `data-plane-trajectory.md`:
- * mulch is the memory layer, so its delta is complete.
+ * `mergeMulchFile` produces. mulch is warren's memory layer and gets real
+ * effort, so its delta is complete.
  */
 export interface MulchDelta {
 	version: 1;
@@ -49,9 +49,9 @@ export interface MulchDelta {
 
 /**
  * seeds issue-tracker close/create mirror — mirrors `MirrorSeedsResult`
- * (`{closed,created}`) plus the merged `issues.jsonl`. Connector-shaped per
- * `data-plane-trajectory.md` (seeds is a swappable tracker), so this is done
- * properly: the full merged body travels for a filesystem-free apply.
+ * (`{closed,created}`) plus the merged `issues.jsonl`. Connector-shaped because
+ * seeds is a swappable tracker, so this is done properly: the full merged body
+ * travels for a filesystem-free apply.
  */
 export interface SeedsDelta {
 	version: 1;

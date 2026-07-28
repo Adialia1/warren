@@ -112,8 +112,7 @@ sandbox, and `/readyz` drops the burrow/bwrap/stale-workspace probes —
 `src/server/handlers/diagnostics.ts`, warren-c128). Everything in this
 section is the `local` topology; for the K8s topology see
 [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) and the design docs under
-`docs/design/` (`runtime-provider-contract.md`, `k8s-migration.md`,
-`k8s-migration-plan.md`).
+`docs/design/` (`runtime-provider-contract.md`, `k8s-migration.md`).
 
 Under `local`, warren and burrow are tightly coupled — burrow is the
 sandbox runtime, warren is the orchestrator that spawns and talks to it via

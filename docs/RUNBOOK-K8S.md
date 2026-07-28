@@ -11,8 +11,7 @@ That path needs none of this document.
 **Cross-references** (read these documents, do not duplicate them here):
 
 - [`deploy/k8s/README.md`](../deploy/k8s/README.md) — the manifest **quick start**: `kubectl apply -k`, overlay layout, secret-creation commands, and the host-mode kubeconfig-401 workaround. This runbook links into it and does not restate it.
-- [`docs/deploy/gke-deploy-prep.md`](deploy/gke-deploy-prep.md) — the live GKE Autopilot provisioning session (warren-4e36): GCP project, region, and Supabase pooler gotchas. Scratch material that seeds §1 below.
-- [`docs/design/k8s-migration.md`](design/k8s-migration.md), [`k8s-migration-plan.md`](design/k8s-migration-plan.md), [`runtime-provider-contract.md`](design/runtime-provider-contract.md) — the architecture decisions behind everything in this runbook.
+- [`docs/design/k8s-migration.md`](design/k8s-migration.md) and [`runtime-provider-contract.md`](design/runtime-provider-contract.md) — the architecture decisions behind everything in this runbook. Both are historical records of work that shipped in v0.10.0.
 
 ---
 
@@ -41,7 +40,7 @@ Autopilot is the reference hosted target (deployed live 2026-07-13, warren-4e36)
 Autopilot manages nodes, bills per-pod requests, and enforces restricted PodSecurity.
 The pod-spec builder (`src/runtime/k8s/pod-spec.ts`) already complies: non-root uid 1000, `drop: [ALL]`, `seccompProfile: RuntimeDefault`, no privilege escalation, `restartPolicy: Never`.
 
-One-time provisioning (the full command set is in [`gke-deploy-prep.md`](deploy/gke-deploy-prep.md) §2):
+One-time provisioning:
 
 ```bash
 export PROJECT_ID=...  REGION=us-west1  CLUSTER=warren
@@ -111,9 +110,13 @@ Two workarounds (`kubectl proxy`, or a token kubeconfig with `--insecure-skip-tl
 Nothing in code *forces* Postgres under `k8s` — `run_inbox` has both a sqlite and a postgres migration.
 But SQLite on a `ReadWriteOnce` PVC is a single-replica trap.
 Set `WARREN_DB_URL=postgres://...` deliberately.
-The Supabase pooler gotchas are in [`gke-deploy-prep.md`](deploy/gke-deploy-prep.md) §5.
-They cover the `sslmode=require&uselibpqcompat=true` compat flag, and the IPv6-only direct host vs. the IPv4 session pooler on Autopilot.
 Agent run pods never get the DB URL — only the control plane does (§3, blast-radius minimization).
+
+Supabase Postgres is the reference backend. Three of its gotchas each cost a deploy session (warren-4e36):
+
+- **The URL must carry `sslmode=require&uselibpqcompat=true`.** Without the compat flag, `pg-connection-string` reads `sslmode=require` as verify-full and rejects the pooler certificate chain with `SELF_SIGNED_CERT_IN_CHAIN`.
+- **Point at the session pooler host, not the direct host.** `db.<ref>.supabase.co` resolves over IPv6 only, and GKE Autopilot pods speak IPv4 by default. Use `aws-1-<region>.pooler.supabase.com:5432` with the tenant username form `postgres.<ref>`. The older `aws-0-` pooler generation answers "tenant not found".
+- **Single-quote the value in a shell.** The `&` in the query string forks the command otherwise.
 
 ### 1.6 Automated CI/CD (GitHub Actions)
 
@@ -376,7 +379,6 @@ Put an org on the list only when you accept every repo in it becoming visible.
 
 The Deployment env below turns on and tunes the K8s backend.
 Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
-The full Fly→K8s mapping is in [`gke-deploy-prep.md`](deploy/gke-deploy-prep.md) §4.
 
 | Env | Value / default | Meaning |
 |---|---|---|

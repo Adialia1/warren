@@ -1,4 +1,4 @@
-# GKE Autopilot overlay (design k8s-migration-plan.md §3.2 — the hosted target).
+# GKE Autopilot overlay — the hosted target (docs/RUNBOOK-K8S.md §1.1).
 #
 # This overlay is a TEMPLATE — the LOCATION/PROJECT registry paths and the git
 # identity are placeholders. Do not put real deployment values here; create a

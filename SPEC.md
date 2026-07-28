@@ -258,7 +258,7 @@ Verified empirically on Docker 28.4 / Ubuntu 24.04. (These container flags apply
 > are nullified for new rows and kept only for historical ones. The subsection
 > is preserved verbatim below as a V1 design record — do not treat it as current
 > behavior. See [`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md) and
-> `docs/design/k8s-migration.md` (§1.1, §3.3) / `k8s-migration-plan.md` for the
+> `docs/design/k8s-migration.md` (§1.1, §3.3) for the
 > supersession.
 
 Zero-config deployment is unchanged: one warren container, one
