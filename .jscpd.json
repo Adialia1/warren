@@ -7,7 +7,6 @@
 		"**/*.test.ts",
 		"**/*.test.tsx",
 		"src/db/migrations/**",
-		"src/db/schema/**",
 		"src/ui/dist/**"
 	],
 	"minTokens": 100,

@@ -30,12 +30,7 @@
  */
 
 import { ValidationError } from "../../core/errors.ts";
-import {
-	resolveSpawnEnv,
-	type SpawnFn,
-	type SpawnOptions,
-	type SpawnResult,
-} from "../../projects/clone.ts";
+import { defaultSpawn } from "../../projects/clone.ts";
 import type { Route, RouteContext, RouteHandler, RoutePolicy, ServerDeps } from "../types.ts";
 import {
 	getAgentHandler,
@@ -84,36 +79,10 @@ import {
 } from "./runs/index.ts";
 
 /**
- * Default `Bun.spawn` adaptor matching the SpawnFn shape the registry +
- * projects modules expect. One of three identical copies, alongside
- * `defaultSpawn` in src/cli/output.ts and src/server/main/utils.ts;
- * the duplication is deliberate so neither surface imports the other.
+ * The production `Bun.spawn` adaptor, re-exported so the domain handlers
+ * keep importing their shared helpers from this one module.
  */
-export const defaultSpawn: SpawnFn = async (
-	cmd: readonly string[],
-	opts: SpawnOptions,
-): Promise<SpawnResult> => {
-	const proc = Bun.spawn({
-		cmd: [...cmd],
-		cwd: opts.cwd,
-		stdout: "pipe",
-		stderr: "pipe",
-		// warren-035c/fa84: merge caller env OVER process.env (pinned identity
-		// wins); an `undefined` override unsets an inherited var. See resolveSpawnEnv.
-		...(opts.env !== undefined ? { env: resolveSpawnEnv(opts.env) } : {}),
-	});
-	const timer =
-		opts.timeoutMs !== undefined && opts.timeoutMs > 0
-			? setTimeout(() => proc.kill(), opts.timeoutMs)
-			: null;
-	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	if (timer !== null) clearTimeout(timer);
-	return { stdout, stderr, exitCode: exitCode ?? 0 };
-};
+export { defaultSpawn };
 
 /* ----------------------------------------------------------------------- */
 /* Body / param parsing                                                     */

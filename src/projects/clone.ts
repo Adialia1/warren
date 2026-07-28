@@ -62,8 +62,8 @@ export type SpawnFn = (cmd: readonly string[], opts: SpawnOptions) => Promise<Sp
  * vars a parent `git commit`'s hook exports so its subprocesses can't escape
  * their `cwd`). A plain object spread can't remove keys, hence the filter.
  *
- * Shared by the execFile adaptor (`src/runs/reap/util.ts`) and all three
- * `Bun.spawn` adaptors so the merge semantics can never drift between them.
+ * Shared by the execFile adaptor (`src/runs/reap/util.ts`) and the
+ * `Bun.spawn` adaptor below so the merge semantics can never drift.
  */
 export function resolveSpawnEnv(
 	overrides: Record<string, string | undefined>,
@@ -75,6 +75,43 @@ export function resolveSpawnEnv(
 	}
 	return out;
 }
+
+/**
+ * The production `Bun.spawn` adaptor for `SpawnFn` (warren-032a). Every
+ * surface that needs one — the CLI (`src/cli/output.ts`), the boot wiring
+ * (`src/server/main/utils.ts`), and the HTTP handlers
+ * (`src/server/handlers/index.ts`) — imports this single definition, which
+ * lives beside the `SpawnFn` contract and `resolveSpawnEnv` those surfaces
+ * already import.
+ *
+ * `timeoutMs` kills the child; the caller still observes whatever the process
+ * wrote before the kill, plus its exit code.
+ */
+export const defaultSpawn: SpawnFn = async (
+	cmd: readonly string[],
+	opts: SpawnOptions,
+): Promise<SpawnResult> => {
+	const proc = Bun.spawn({
+		cmd: [...cmd],
+		cwd: opts.cwd,
+		stdout: "pipe",
+		stderr: "pipe",
+		// warren-035c/fa84: merge caller env OVER process.env (pinned identity
+		// wins); an `undefined` override unsets an inherited var. See resolveSpawnEnv.
+		...(opts.env !== undefined ? { env: resolveSpawnEnv(opts.env) } : {}),
+	});
+	const timer =
+		opts.timeoutMs !== undefined && opts.timeoutMs > 0
+			? setTimeout(() => proc.kill(), opts.timeoutMs)
+			: null;
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	if (timer !== null) clearTimeout(timer);
+	return { stdout, stderr, exitCode: exitCode ?? 0 };
+};
 
 export interface CloneProjectInput {
 	readonly config: ProjectsConfig;
