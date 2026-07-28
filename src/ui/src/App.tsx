@@ -53,75 +53,75 @@ export function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
 			<MotionProvider>
-			<ToastProvider>
-			<HashRouter>
-				<Routes>
-					<Route path="/login" element={<LoginPage />} />
-					<Route
-						element={
-							<AuthGate>
-								<Layout />
-							</AuthGate>
-						}
-					>
-						{/* Runs is the home surface. The former Plot-first
+				<ToastProvider>
+					<HashRouter>
+						<Routes>
+							<Route path="/login" element={<LoginPage />} />
+							<Route
+								element={
+									<AuthGate>
+										<Layout />
+									</AuthGate>
+								}
+							>
+								{/* Runs is the home surface. The former Plot-first
 						    landing (DefaultLanding, warren-e59a) died with the
 						    plot deletion pass — warren-1f12 / pl-3a79 step 10. */}
-						<Route index element={<Navigate to="/runs" replace />} />
-						<Route path="/runs" element={<RunsPage />} />
-						{/* The two dispatch forms are the only pages whose whole
+								<Route index element={<Navigate to="/runs" replace />} />
+								<Route path="/runs" element={<RunsPage />} />
+								{/* The two dispatch forms are the only pages whose whole
 						    reason to exist is a mutation, so they are guarded at
 						    the route rather than field by field — a spectator
 						    who deep-links here lands on /runs
 						    (warren-f53e / pl-b82d step 19). */}
-						<Route
-							path="/runs/new"
-							element={
-								<OperatorRoute>
-									<NewRunPage />
-								</OperatorRoute>
-							}
-						/>
-						<Route path="/runs/:id" element={<RunDetailPage />} />
-						<Route path="/plan-runs" element={<PlanRunsPage />} />
-						<Route
-							path="/plan-runs/new"
-							element={
-								<OperatorRoute>
-									<NewPlanRunPage />
-								</OperatorRoute>
-							}
-						/>
-						<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
-						<Route path="/agents" element={<AgentsPage />} />
-						<Route
-							path="/cost-analytics"
-							element={
-								// `GET /analytics/cost` is readOperator (the
-								// instance-wide USD rollup), so the page is
-								// guarded to match the nav entry it drops.
-								<OperatorRoute capability="readOperator">
-									<Suspense fallback={<AnalyticsFallback />}>
-										<CostAnalyticsPage />
-									</Suspense>
-								</OperatorRoute>
-							}
-						/>
-						<Route
-							path="/run-analytics"
-							element={
-								<Suspense fallback={<AnalyticsFallback />}>
-									<RunAnalyticsPage />
-								</Suspense>
-							}
-						/>
-						<Route path="/projects" element={<ProjectsPage />} />
-						<Route path="/projects/:id" element={<ProjectDetailPage />} />
-					</Route>
-					<Route path="*" element={<Navigate to="/runs" replace />} />
-				</Routes>
-			</HashRouter>
-			</ToastProvider>
+								<Route
+									path="/runs/new"
+									element={
+										<OperatorRoute>
+											<NewRunPage />
+										</OperatorRoute>
+									}
+								/>
+								<Route path="/runs/:id" element={<RunDetailPage />} />
+								<Route path="/plan-runs" element={<PlanRunsPage />} />
+								<Route
+									path="/plan-runs/new"
+									element={
+										<OperatorRoute>
+											<NewPlanRunPage />
+										</OperatorRoute>
+									}
+								/>
+								<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
+								<Route path="/agents" element={<AgentsPage />} />
+								<Route
+									path="/cost-analytics"
+									element={
+										// `GET /analytics/cost` is readOperator (the
+										// instance-wide USD rollup), so the page is
+										// guarded to match the nav entry it drops.
+										<OperatorRoute capability="readOperator">
+											<Suspense fallback={<AnalyticsFallback />}>
+												<CostAnalyticsPage />
+											</Suspense>
+										</OperatorRoute>
+									}
+								/>
+								<Route
+									path="/run-analytics"
+									element={
+										<Suspense fallback={<AnalyticsFallback />}>
+											<RunAnalyticsPage />
+										</Suspense>
+									}
+								/>
+								<Route path="/projects" element={<ProjectsPage />} />
+								<Route path="/projects/:id" element={<ProjectDetailPage />} />
+							</Route>
+							<Route path="*" element={<Navigate to="/runs" replace />} />
+						</Routes>
+					</HashRouter>
+				</ToastProvider>
 			</MotionProvider>
 		</QueryClientProvider>
 	);

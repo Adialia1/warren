@@ -75,17 +75,17 @@ export function PlanRunDetailPage() {
 				</div>
 				{canCancel ? (
 					<OperatorOnly>
-					<div className="flex flex-col items-end gap-1">
-						<Button
-							variant="destructive"
-							onClick={() => cancel.mutate()}
-							disabled={cancel.isPending}
-						>
-							<CircleStop className="h-4 w-4" />
-							{cancel.isPending ? "Cancelling…" : "Cancel"}
-						</Button>
-						<CancelStatus mutation={cancel} />
-					</div>
+						<div className="flex flex-col items-end gap-1">
+							<Button
+								variant="destructive"
+								onClick={() => cancel.mutate()}
+								disabled={cancel.isPending}
+							>
+								<CircleStop className="h-4 w-4" />
+								{cancel.isPending ? "Cancelling…" : "Cancel"}
+							</Button>
+							<CancelStatus mutation={cancel} />
+						</div>
 					</OperatorOnly>
 				) : null}
 			</header>
@@ -148,7 +148,7 @@ export function PlanRunDetailPage() {
 				</CardContent>
 			</Card>
 
-			<PlanRunChildTable children={children} runs={runs} />
+			<PlanRunChildTable planChildren={children} runs={runs} />
 		</div>
 	);
 }
@@ -159,16 +159,10 @@ function CancelStatus({
 	mutation: ReturnType<typeof useMutation<unknown, Error, void>>;
 }) {
 	if (mutation.isError) {
-		return (
-			<p className="text-xs text-(--color-destructive)">{formatError(mutation.error)}</p>
-		);
+		return <p className="text-xs text-(--color-destructive)">{formatError(mutation.error)}</p>;
 	}
 	if (mutation.isSuccess) {
-		return (
-			<p className="text-xs text-emerald-700 dark:text-emerald-300">
-				Cancel forwarded.
-			</p>
-		);
+		return <p className="text-xs text-emerald-700 dark:text-emerald-300">Cancel forwarded.</p>;
 	}
 	return null;
 }
@@ -188,18 +182,13 @@ function renderExecutionRepos(planRun: PlanRunRow, children: PlanRunChildRow[]):
 	}
 	if (distinct.size === 0) {
 		return (
-			<span className="font-mono text-xs text-(--color-muted-foreground)">
-				{planRun.projectId}
-			</span>
+			<span className="font-mono text-xs text-(--color-muted-foreground)">{planRun.projectId}</span>
 		);
 	}
 	return (
 		<div className="flex flex-wrap gap-1">
 			{[...distinct].map((repo) => (
-				<span
-					key={repo}
-					className="rounded bg-(--color-muted) px-1.5 py-0.5 font-mono text-xs"
-				>
+				<span key={repo} className="rounded bg-(--color-muted) px-1.5 py-0.5 font-mono text-xs">
 					{repo}
 				</span>
 			))}

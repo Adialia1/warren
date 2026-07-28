@@ -20,8 +20,8 @@ import type { CapabilityName } from "@/api/types.ts";
 import { ErrorBoundary } from "@/components/ErrorBoundary.tsx";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { ThemeToggle } from "@/components/ThemeToggle.tsx";
-import { WarrenLogo } from "@/components/WarrenLogo.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { WarrenLogo } from "@/components/WarrenLogo.tsx";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { cn } from "@/lib/utils.ts";
 
@@ -86,6 +86,7 @@ export function Layout() {
 	// either way, but resetting state keeps it predictable).
 	const [mobileNavOpen, setMobileNavOpen] = useState(false);
 	const location = useLocation();
+	// biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger, not a read
 	useEffect(() => {
 		setMobileNavOpen(false);
 	}, [location.pathname]);

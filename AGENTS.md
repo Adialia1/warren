@@ -102,7 +102,9 @@ Details on the additional checks:
   budget. New `.ts`/`.tsx` files under `src/` and `scripts/` must stay
   ≤ 500 lines; existing oversized files are grandfathered in
   `scripts/file-size-budgets.json` and may not grow past their frozen
-  ceiling — the ratchet only goes down. Biome's
+  ceiling — the ratchet only goes down. `src/ui/` is in scope as of
+  warren-c8bd. The walk skips only the `src/ui/dist/` build output.
+  That change added the three `src/ui/` entries to the budget file. Biome's
   `noExcessiveLinesPerFunction` rule (also 500-line cap) enforces the
   same budget at the function level, with the same baseline exceptions
   called out in `biome.json`'s `overrides`.
@@ -112,7 +114,9 @@ Details on the additional checks:
   `pl-XXXX`, `mx-XXXX`, `#NNN`, or a URL). The ratchet grandfather list
   lives in `scripts/debt-marker-allowlist.json` and only goes down —
   pair new markers with an id (or remove them) rather than appending to
-  the allowlist.
+  the allowlist. `src/ui/` is in scope as of warren-c8bd. The walk
+  skips only `src/ui/dist/`. `src/ui/` carried no untracked marker, so
+  the allowlist stays empty.
 - **`check:agents`** — validates that `AGENTS.md` references
   (`bun run <X>` commands and backtick-quoted paths) still exist.
 - **Four guards ride inside `lint`** rather than taking a manifest slot of their own, because the canonical `check:all` gate vocabulary is frozen. They are `scripts/check-layers.ts`, `scripts/check-version-sync.ts`, `scripts/check-wire-types.ts` and `scripts/check-prose.ts`. Each one also runs on its own under the matching `check:` script name. See "Single source of truth" below for the first and third.
@@ -120,7 +124,8 @@ Details on the additional checks:
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, cognitive
 complexity ≤ 15) enforces a project-wide complexity ceiling. New code
 must stay under the threshold; existing offenders are grandfathered in
-the second `overrides` block of `biome.json`. The ratchet only goes
+the first `overrides` block of `biome.json`. That block also names the
+15 `src/ui/` files warren-c8bd brought into scope. The ratchet only goes
 down — refactor offenders out of the list rather than adding new
 entries.
 
@@ -191,9 +196,11 @@ with lint warnings; fix at write time or promote to error in `biome.json`.
   groupings (e.g. `src/server/handlers/plan-runs.create.test.ts`) are allowed
   and each dot-segment must itself be kebab-case. Enforced by Biome's
   `useFilenamingConvention` rule (group `style`, kebab-case, strict).
-  The `src/ui/` package is excluded from this Biome config and uses
-  `PascalCase.tsx` for React components/pages plus kebab-case for
-  everything else (hooks, helpers, api modules).
+- **Filenames (`src/ui/`):** the same kebab-case rule applies as of
+  warren-c8bd. The second `overrides` block of `biome.json` names the 32
+  legacy PascalCase and camelCase UI files that predate the rule. That
+  list is a bounded ratchet and only goes down. Write new UI files in
+  kebab-case. To clear an entry, rename the file and delete its line.
 - **Directories:** `kebab-case` (`src/burrow-client/`,
   `src/plan-runs/`, `src/warren-config/`).
 - **Identifiers:** `camelCase` for functions, variables, and instance

@@ -18,13 +18,10 @@ import { StatusIndicator } from "@/components/StatusIndicator.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import {
-	responsiveFooterActions,
-	responsiveFooterButton,
-} from "@/components/ui/responsive.ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { AnimatePresence, StreamItem } from "@/components/ui/motion.tsx";
+import { responsiveFooterActions, responsiveFooterButton } from "@/components/ui/responsive.ts";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
@@ -68,8 +65,7 @@ export function RunDetailPage() {
 		},
 	});
 
-	const isTerminal =
-		run.data !== undefined && isTerminalRunState(run.data.state);
+	const isTerminal = run.data !== undefined && isTerminalRunState(run.data.state);
 	const stream = useEventStream(id, !isTerminal);
 
 	// Invalidate the run query when an event with a state-changing kind
@@ -98,7 +94,7 @@ export function RunDetailPage() {
 			// badges either.
 			void qc.invalidateQueries({ queryKey: ["runs"] });
 		}
-	}, [stream.events, id, qc]);
+	}, [stream.events, qc]);
 
 	const cancel = useMutation({
 		mutationFn: () => runsApi.cancel(id, {}),
@@ -171,54 +167,54 @@ export function RunDetailPage() {
 					</p>
 				</div>
 				<OperatorOnly>
-				<div className="flex flex-col items-end gap-1">
-					{isTerminal ? (
-						<div className="flex gap-2">
-							<Button
-								variant="outline"
-								onClick={() =>
-									navigate("/runs/new", {
-										state: {
-											cloneFromRunId: r.id,
-											agent: r.agentName,
-											project: r.projectId ?? undefined,
+					<div className="flex flex-col items-end gap-1">
+						{isTerminal ? (
+							<div className="flex gap-2">
+								<Button
+									variant="outline"
+									onClick={() =>
+										navigate("/runs/new", {
+											state: {
+												cloneFromRunId: r.id,
+												agent: r.agentName,
+												project: r.projectId ?? undefined,
 												prompt: r.prompt,
-										} satisfies NewRunRouteState,
-									})
-								}
-							>
-								<RefreshCw className="h-4 w-4" />
-								Re-run from scratch
-							</Button>
-							<Button
-								variant="outline"
-								onClick={() =>
-									navigate("/runs/new", {
-										state: {
-											continueFromRunId: r.id,
-											agent: r.agentName,
-											project: r.projectId ?? undefined,
+											} satisfies NewRunRouteState,
+										})
+									}
+								>
+									<RefreshCw className="h-4 w-4" />
+									Re-run from scratch
+								</Button>
+								<Button
+									variant="outline"
+									onClick={() =>
+										navigate("/runs/new", {
+											state: {
+												continueFromRunId: r.id,
+												agent: r.agentName,
+												project: r.projectId ?? undefined,
 												prompt: r.prompt,
-										} satisfies NewRunRouteState,
-									})
-								}
+											} satisfies NewRunRouteState,
+										})
+									}
+								>
+									<Send className="h-4 w-4" />
+									Continue with follow-up
+								</Button>
+							</div>
+						) : (
+							<Button
+								variant="destructive"
+								onClick={() => cancel.mutate()}
+								disabled={cancel.isPending || isTerminal}
 							>
-								<Send className="h-4 w-4" />
-								Continue with follow-up
+								<CircleStop className="h-4 w-4" />
+								{cancel.isPending ? "Cancelling…" : "Cancel"}
 							</Button>
-						</div>
-					) : (
-						<Button
-							variant="destructive"
-							onClick={() => cancel.mutate()}
-							disabled={cancel.isPending || isTerminal}
-						>
-							<CircleStop className="h-4 w-4" />
-							{cancel.isPending ? "Cancelling…" : "Cancel"}
-						</Button>
-					)}
-					<CancelStatus mutation={cancel} />
-				</div>
+						)}
+						<CancelStatus mutation={cancel} />
+					</div>
 				</OperatorOnly>
 			</header>
 
@@ -250,15 +246,12 @@ export function RunDetailPage() {
 				<MetaCard label="Updated">{relativeTime(r.endedAt ?? r.startedAt)}</MetaCard>
 				{r.seedId !== null ? (
 					<MetaCard label="Seed">
-						<span
-							className="font-mono text-xs"
-							title="Seeds issue this run was dispatched against"
-						>
+						<span className="font-mono text-xs" title="Seeds issue this run was dispatched against">
 							{r.seedId}
 						</span>
 						<p className="mt-1 text-xs text-(--color-muted-foreground)">
-							The seed lives in the coordination project; for a cross-repo plan-run
-							child this may differ from the execution repo above.
+							The seed lives in the coordination project; for a cross-repo plan-run child this may
+							differ from the execution repo above.
 						</p>
 					</MetaCard>
 				) : null}
@@ -325,9 +318,7 @@ function CancelStatus({
 	if (mutation.isError) {
 		return (
 			<p className="text-xs text-(--color-destructive)">
-				{mutation.error instanceof Error
-					? mutation.error.message
-					: String(mutation.error)}
+				{mutation.error instanceof Error ? mutation.error.message : String(mutation.error)}
 			</p>
 		);
 	}
@@ -363,9 +354,7 @@ function CostCard({ run }: { run: RunRow }) {
 	return (
 		<Card>
 			<CardContent className="space-y-1 p-4">
-				<div className="text-xs uppercase tracking-wide text-(--color-muted-foreground)">
-					Cost
-				</div>
+				<div className="text-xs uppercase tracking-wide text-(--color-muted-foreground)">Cost</div>
 				<div className="font-mono text-lg">
 					{run.costUsd !== null ? (
 						formatCostUsd(run.costUsd)
@@ -374,9 +363,7 @@ function CostCard({ run }: { run: RunRow }) {
 					)}
 				</div>
 				{tokens !== null ? (
-					<div className="font-mono text-xs text-(--color-muted-foreground)">
-						{tokens}
-					</div>
+					<div className="font-mono text-xs text-(--color-muted-foreground)">{tokens}</div>
 				) : null}
 			</CardContent>
 		</Card>
@@ -458,9 +445,7 @@ function PreviewCard({ run }: { run: RunRow }) {
 				) : null}
 			</CardHeader>
 			<CardContent className="space-y-3">
-				{canonicalUrl !== null ? (
-					<PreviewMetaLine label="URL" value={canonicalUrl} mono />
-				) : null}
+				{canonicalUrl !== null ? <PreviewMetaLine label="URL" value={canonicalUrl} mono /> : null}
 				<div className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
 					{run.previewPort !== null ? (
 						<PreviewMetaLine label="Port" value={String(run.previewPort)} />
@@ -490,15 +475,7 @@ function PreviewCard({ run }: { run: RunRow }) {
 	);
 }
 
-function PreviewMetaLine({
-	label,
-	value,
-	mono,
-}: {
-	label: string;
-	value: string;
-	mono?: boolean;
-}) {
+function PreviewMetaLine({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
 	return (
 		<div className="flex items-baseline gap-2">
 			<span className="uppercase tracking-wide text-(--color-muted-foreground)">{label}</span>
@@ -667,6 +644,7 @@ function EventTail({
 		}
 	}, [autoScroll]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: sorted.length is the trigger, not a read
 	useEffect(() => {
 		if (!autoScroll || !ref.current) return;
 		ref.current.scrollTop = ref.current.scrollHeight;
@@ -710,9 +688,7 @@ function EventTail({
 				</div>
 			</CardHeader>
 			<CardContent>
-				{error !== null ? (
-					<p className="mb-2 text-xs text-(--color-destructive)">{error}</p>
-				) : null}
+				{error !== null ? <p className="mb-2 text-xs text-(--color-destructive)">{error}</p> : null}
 				<div
 					ref={ref}
 					onScroll={onScroll}
@@ -724,7 +700,9 @@ function EventTail({
 						<p className="p-4 text-(--color-muted-foreground)">No events yet.</p>
 					) : (
 						<AnimatePresence initial={false}>
-							{sorted.map((e) => <EventLine key={e.id} event={e} />)}
+							{sorted.map((e) => (
+								<EventLine key={e.id} event={e} />
+							))}
 						</AnimatePresence>
 					)}
 				</div>
@@ -848,9 +826,7 @@ function EventLineInner({ event }: { event: RunEvent }) {
 	const displayKind = sub !== null ? (PI_SUBKIND_LABELS[sub] ?? event.kind) : event.kind;
 	const summary = summarizeEvent(event);
 	const expanded =
-		typeof event.payload === "string"
-			? event.payload
-			: JSON.stringify(event.payload, null, 2);
+		typeof event.payload === "string" ? event.payload : JSON.stringify(event.payload, null, 2);
 	return (
 		<details className={`group ${colour}`}>
 			<summary className="flex cursor-pointer items-baseline gap-2 select-none [&::-webkit-details-marker]:hidden">
@@ -972,9 +948,7 @@ function summarizeStateChange(payload: Record<string, unknown>): string {
 
 function summarizeTool(payload: Record<string, unknown>): string {
 	const name =
-		readString(payload.name) ??
-		readString(payload.tool) ??
-		readString(payload.tool_name);
+		readString(payload.name) ?? readString(payload.tool) ?? readString(payload.tool_name);
 	const exit = readNumber(payload.exit_code) ?? readNumber(payload.exitCode);
 	const parts: string[] = [];
 	if (name !== null) parts.push(name);
@@ -1104,9 +1078,7 @@ function SteerForm({ runId, disabled }: { runId: string; disabled: boolean }) {
 					</div>
 					{steer.isError ? (
 						<p className="text-sm text-(--color-destructive)">
-							{steer.error instanceof Error
-								? steer.error.message
-								: String(steer.error)}
+							{steer.error instanceof Error ? steer.error.message : String(steer.error)}
 						</p>
 					) : null}
 					{success ? (

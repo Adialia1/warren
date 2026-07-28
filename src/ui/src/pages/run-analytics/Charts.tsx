@@ -44,9 +44,7 @@ import { formatTokens } from "./format.ts";
  * coerce to a finite number before running it through `formatTokens`.
  */
 function tokenTooltip(label: string) {
-	return (
-		value: number | string | readonly (number | string)[] | undefined,
-	): [string, string] => {
+	return (value: number | string | readonly (number | string)[] | undefined): [string, string] => {
 		const n = typeof value === "number" ? value : Number(value);
 		return [formatTokens(Number.isFinite(n) ? n : 0), label];
 	};
@@ -101,9 +99,7 @@ function ChartFrame({
 			</CardHeader>
 			<CardContent>
 				{empty ? (
-					<p className="py-6 text-sm text-(--color-muted-foreground)">
-						No data in this window.
-					</p>
+					<p className="py-6 text-sm text-(--color-muted-foreground)">No data in this window.</p>
 				) : (
 					<ChartContainer>{children}</ChartContainer>
 				)}
@@ -177,7 +173,14 @@ export function AvgContextPerAgentChart({ byAgent }: { byAgent: RunGroupBucket[]
 		>
 			<BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
 				<CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-				<XAxis dataKey="key" {...AXIS_PROPS} interval={0} angle={-20} textAnchor="end" height={50} />
+				<XAxis
+					dataKey="key"
+					{...AXIS_PROPS}
+					interval={0}
+					angle={-20}
+					textAnchor="end"
+					height={50}
+				/>
 				<YAxis tickFormatter={formatTokens} {...AXIS_PROPS} />
 				<Tooltip contentStyle={TOOLTIP_STYLE} formatter={tokenTooltip("avg context")} />
 				<Bar dataKey="avgContextTokens" fill="var(--color-info)" radius={[3, 3, 0, 0]} />
@@ -196,11 +199,7 @@ export function TopSeedsByContextChart({ topSeeds }: { topSeeds: SeedContextBuck
 			subtitle="Total context tokens across seed-originated runs"
 			empty={data.length === 0}
 		>
-			<BarChart
-				data={data}
-				layout="vertical"
-				margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
-			>
+			<BarChart data={data} layout="vertical" margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
 				<CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
 				<XAxis type="number" tickFormatter={formatTokens} {...AXIS_PROPS} />
 				<YAxis type="category" dataKey="key" width={90} {...AXIS_PROPS} />

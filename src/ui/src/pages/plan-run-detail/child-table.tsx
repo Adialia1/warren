@@ -21,10 +21,10 @@ import { relativeTime } from "@/lib/utils.ts";
  * second renderer.
  */
 export function PlanRunChildTable({
-	children,
+	planChildren,
 	runs,
 }: {
-	children: PlanRunChildRow[];
+	planChildren: PlanRunChildRow[];
 	runs: RunRow[];
 }) {
 	const runIndex = useMemo(() => {
@@ -35,10 +35,10 @@ export function PlanRunChildTable({
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Children ({children.length})</CardTitle>
+				<CardTitle>Children ({planChildren.length})</CardTitle>
 			</CardHeader>
 			<CardContent className="p-0">
-				{children.length === 0 ? (
+				{planChildren.length === 0 ? (
 					<p className="p-6 text-sm text-(--color-muted-foreground)">
 						No children — plan has no open child seeds.
 					</p>
@@ -58,7 +58,7 @@ export function PlanRunChildTable({
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{children.map((c) => {
+							{planChildren.map((c) => {
 								const linkedRun = c.runId !== null ? runIndex.get(c.runId) : undefined;
 								const prUrl = linkedRun?.prUrl ?? null;
 								return (
@@ -100,11 +100,7 @@ export function PlanRunChildTable({
 													target="_blank"
 													rel="noreferrer noopener"
 													className="underline underline-offset-2 hover:text-(--color-primary)"
-													title={
-														c.prMergedAt !== null
-															? `merged ${c.prMergedAt}`
-															: "PR open"
-													}
+													title={c.prMergedAt !== null ? `merged ${c.prMergedAt}` : "PR open"}
 												>
 													PR ↗
 												</a>

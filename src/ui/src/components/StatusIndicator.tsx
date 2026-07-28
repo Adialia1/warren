@@ -162,7 +162,11 @@ export function StatusIndicator({
 	const meta = getStatusMeta(kind, status);
 	const Icon = meta.icon;
 	return (
-		<Badge variant={meta.variant} className={cn("gap-1 font-mono text-xs", className)} title={title}>
+		<Badge
+			variant={meta.variant}
+			className={cn("gap-1 font-mono text-xs", className)}
+			title={title}
+		>
 			{showIcon ? (
 				<Icon
 					aria-hidden="true"

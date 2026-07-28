@@ -158,8 +158,7 @@ export function NewPlanRunPage() {
 			{noProjects ? (
 				<Card>
 					<CardContent className="p-4 text-sm text-(--color-destructive)">
-						No projects added. Visit <strong>Projects</strong> to clone one from
-						GitHub.
+						No projects added. Visit <strong>Projects</strong> to clone one from GitHub.
 					</CardContent>
 				</Card>
 			) : null}
@@ -167,10 +166,9 @@ export function NewPlanRunPage() {
 				<Card>
 					<CardContent className="space-y-3 p-4 text-sm text-(--color-destructive)">
 						<p>
-							Plan runs require <code className="font-mono">.seeds/</code>. The
-							selected project has no <code className="font-mono">.seeds/</code>{" "}
-							directory at the clone root. Add one and refresh the project to
-							enable plan-run dispatch.
+							Plan runs require <code className="font-mono">.seeds/</code>. The selected project has
+							no <code className="font-mono">.seeds/</code> directory at the clone root. Add one and
+							refresh the project to enable plan-run dispatch.
 						</p>
 						<div className="flex items-center gap-3">
 							{/* `POST /projects/:id/refresh` is `admin`, a strictly
@@ -185,9 +183,7 @@ export function NewPlanRunPage() {
 									disabled={refreshProject.isPending}
 								>
 									<RefreshCw
-										className={`mr-2 h-4 w-4 ${
-											refreshProject.isPending ? "animate-spin" : ""
-										}`}
+										className={`mr-2 h-4 w-4 ${refreshProject.isPending ? "animate-spin" : ""}`}
 									/>
 									Refresh project
 								</Button>
@@ -224,8 +220,7 @@ export function NewPlanRunPage() {
 								</option>
 								{projects.data?.projects.map((p) => (
 									<option key={p.id} value={p.id}>
-										{p.gitUrl} ({p.id})
-										{p.hasSeeds ? "" : " — no .seeds/"}
+										{p.gitUrl} ({p.id}){p.hasSeeds ? "" : " — no .seeds/"}
 									</option>
 								))}
 							</select>
@@ -330,11 +325,8 @@ export function NewPlanRunPage() {
 								className="text-base sm:text-sm"
 							/>
 							<p className="text-xs text-(--color-muted-foreground)">
-								<code className="font-mono">{"{seed_id}"}</code> is substituted
-								per child.
-								{!promptTouched && promptTemplate === DEFAULT_PROMPT_TEMPLATE
-									? " Default."
-									: ""}
+								<code className="font-mono">{"{seed_id}"}</code> is substituted per child.
+								{!promptTouched && promptTemplate === DEFAULT_PROMPT_TEMPLATE ? " Default." : ""}
 							</p>
 						</div>
 
@@ -366,9 +358,7 @@ export function NewPlanRunPage() {
 										setProviderTouched(true);
 									}}
 									placeholder={
-										providerAutoFill.length > 0
-											? providerAutoFill
-											: "anthropic, openai, …"
+										providerAutoFill.length > 0 ? providerAutoFill : "anthropic, openai, …"
 									}
 									disabled={!hasSeeds}
 									autoComplete="off"
@@ -386,9 +376,7 @@ export function NewPlanRunPage() {
 										setModelTouched(true);
 									}}
 									placeholder={
-										modelAutoFill.length > 0
-											? modelAutoFill
-											: "claude-sonnet-4-6, gpt-4o, …"
+										modelAutoFill.length > 0 ? modelAutoFill : "claude-sonnet-4-6, gpt-4o, …"
 									}
 									disabled={!hasSeeds}
 									autoComplete="off"
@@ -400,9 +388,7 @@ export function NewPlanRunPage() {
 
 						{dispatch.isError ? (
 							<p className="text-sm text-(--color-destructive)">
-								{dispatch.error instanceof Error
-									? dispatch.error.message
-									: String(dispatch.error)}
+								{dispatch.error instanceof Error ? dispatch.error.message : String(dispatch.error)}
 							</p>
 						) : null}
 

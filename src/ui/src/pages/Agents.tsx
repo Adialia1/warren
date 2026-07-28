@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
 import { responsiveFormControl } from "@/components/ui/responsive.ts";
+import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -21,12 +22,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
-import {
-	compareStrings,
-	type Comparator,
-	useClientSort,
-} from "@/hooks/use-client-sort.ts";
-import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
+import { type Comparator, compareStrings, useClientSort } from "@/hooks/use-client-sort.ts";
 import { type AgentSourceTier, classifyAgentSource } from "@/lib/agent-source.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
@@ -69,14 +65,10 @@ export function AgentsPage() {
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["agents"] }),
 	});
 	const [openName, setOpenName] = useState<string | null>(null);
-	const { sorted, sort, onSort } = useClientSort(
-		agents.data?.agents ?? [],
-		AGENT_COMPARATORS,
-		{
-			initialKey: "name",
-			defaultDirections: { registeredAt: "desc", lastRefreshed: "desc" },
-		},
-	);
+	const { sorted, sort, onSort } = useClientSort(agents.data?.agents ?? [], AGENT_COMPARATORS, {
+		initialKey: "name",
+		defaultDirections: { registeredAt: "desc", lastRefreshed: "desc" },
+	});
 
 	return (
 		<div className="space-y-6">
@@ -85,60 +77,55 @@ export function AgentsPage() {
 				title="Agents"
 				description={
 					<>
-						Agents available for dispatch. <code>claude-code</code>,{" "}
-						<code>sapling</code>, and <code>pi</code> ship inline; refresh
-						re-clones the optional canopy library for custom agents. Pick a
-						project to surface its <code>.canopy/</code> tier.
+						Agents available for dispatch. <code>claude-code</code>, <code>sapling</code>, and{" "}
+						<code>pi</code> ship inline; refresh re-clones the optional canopy library for custom
+						agents. Pick a project to surface its <code>.canopy/</code> tier.
 					</>
 				}
 				actions={
 					<div className="flex flex-wrap items-end gap-2">
-					<div className="space-y-1.5">
-						<Label htmlFor="agent-project-filter" className="text-xs">
-							Project
-						</Label>
-						<select
-							id="agent-project-filter"
-							value={projectFilter}
-							onChange={(e) => setProjectFilter(e.target.value)}
-							className={`flex min-w-[14rem] rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) ${responsiveFormControl}`}
-						>
-							<option value="">Global only</option>
-							{projects.data?.projects.map((p) => (
-								<option key={p.id} value={p.id}>
-									{p.gitUrl} ({p.id})
-								</option>
-							))}
-						</select>
-					</div>
-					{/* Both refresh routes are `admin` (warren-b875). */}
-					<OperatorOnly capability="admin">
-						{projectFilter.length > 0 ? (
+						<div className="space-y-1.5">
+							<Label htmlFor="agent-project-filter" className="text-xs">
+								Project
+							</Label>
+							<select
+								id="agent-project-filter"
+								value={projectFilter}
+								onChange={(e) => setProjectFilter(e.target.value)}
+								className={`flex min-w-[14rem] rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) ${responsiveFormControl}`}
+							>
+								<option value="">Global only</option>
+								{projects.data?.projects.map((p) => (
+									<option key={p.id} value={p.id}>
+										{p.gitUrl} ({p.id})
+									</option>
+								))}
+							</select>
+						</div>
+						{/* Both refresh routes are `admin` (warren-b875). */}
+						<OperatorOnly capability="admin">
+							{projectFilter.length > 0 ? (
+								<Button
+									onClick={() => refreshProject.mutate(projectFilter)}
+									disabled={refreshProject.isPending}
+									variant="outline"
+								>
+									<RefreshCw
+										className={`h-4 w-4 ${refreshProject.isPending ? "animate-spin" : ""}`}
+									/>
+									Refresh project tier
+								</Button>
+							) : null}
 							<Button
-								onClick={() => refreshProject.mutate(projectFilter)}
-								disabled={refreshProject.isPending}
+								onClick={() => refresh.mutate()}
+								disabled={refresh.isPending}
 								variant="outline"
 							>
-								<RefreshCw
-									className={`h-4 w-4 ${
-										refreshProject.isPending ? "animate-spin" : ""
-									}`}
-								/>
-								Refresh project tier
+								<RefreshCw className={`h-4 w-4 ${refresh.isPending ? "animate-spin" : ""}`} />
+								Refresh registry
 							</Button>
-						) : null}
-						<Button
-							onClick={() => refresh.mutate()}
-							disabled={refresh.isPending}
-							variant="outline"
-						>
-							<RefreshCw
-								className={`h-4 w-4 ${refresh.isPending ? "animate-spin" : ""}`}
-							/>
-							Refresh registry
-						</Button>
-					</OperatorOnly>
-				</div>
+						</OperatorOnly>
+					</div>
 				}
 			/>
 
@@ -146,16 +133,12 @@ export function AgentsPage() {
 				<Card>
 					<CardContent className="flex flex-wrap items-center gap-3 p-4 text-sm">
 						<span className="font-medium">Last refresh:</span>
-						<Badge variant="succeeded">
-							{refresh.data.registered.length} registered
-						</Badge>
+						<Badge variant="succeeded">{refresh.data.registered.length} registered</Badge>
 						{refresh.data.skipped.length > 0 ? (
 							<Badge variant="failed">{refresh.data.skipped.length} skipped</Badge>
 						) : null}
 						{refresh.data.removed.length > 0 ? (
-							<Badge variant="cancelled">
-								{refresh.data.removed.length} removed
-							</Badge>
+							<Badge variant="cancelled">{refresh.data.removed.length} removed</Badge>
 						) : null}
 						<span className="text-(--color-muted-foreground)">
 							{refresh.data.clone.head.slice(0, 12)}
@@ -169,18 +152,12 @@ export function AgentsPage() {
 					<CardContent className="flex flex-wrap items-center gap-3 p-4 text-sm">
 						<span className="font-medium">Last project refresh:</span>
 						<code className="font-mono text-xs">{refreshProject.data.projectId}</code>
-						<Badge variant="succeeded">
-							{refreshProject.data.registered.length} registered
-						</Badge>
+						<Badge variant="succeeded">{refreshProject.data.registered.length} registered</Badge>
 						{refreshProject.data.skipped.length > 0 ? (
-							<Badge variant="failed">
-								{refreshProject.data.skipped.length} skipped
-							</Badge>
+							<Badge variant="failed">{refreshProject.data.skipped.length} skipped</Badge>
 						) : null}
 						{refreshProject.data.removed.length > 0 ? (
-							<Badge variant="cancelled">
-								{refreshProject.data.removed.length} removed
-							</Badge>
+							<Badge variant="cancelled">{refreshProject.data.removed.length} removed</Badge>
 						) : null}
 					</CardContent>
 				</Card>
@@ -204,7 +181,9 @@ export function AgentsPage() {
 				</CardHeader>
 				<CardContent className="p-0">
 					{agents.isLoading ? (
-						<div className="p-6"><Spinner label="Loading agents" /></div>
+						<div className="p-6">
+							<Spinner label="Loading agents" />
+						</div>
 					) : agents.isError ? (
 						<div className="p-6">
 							<Alert variant="danger" title="Failed to load agents">
@@ -216,10 +195,9 @@ export function AgentsPage() {
 							title="No agents registered"
 							description={
 								<>
-									Built-in <code>claude-code</code>, <code>sapling</code>, and{" "}
-									<code>pi</code> should appear here automatically — if not,
-									check <code>warren doctor</code>. To layer a custom canopy
-									library on top, set <code>CANOPY_REPO_URL</code> and click{" "}
+									Built-in <code>claude-code</code>, <code>sapling</code>, and <code>pi</code>{" "}
+									should appear here automatically — if not, check <code>warren doctor</code>. To
+									layer a custom canopy library on top, set <code>CANOPY_REPO_URL</code> and click{" "}
 									<strong>Refresh registry</strong>.
 								</>
 							}
@@ -250,9 +228,7 @@ export function AgentsPage() {
 										agent={a}
 										open={openName === agentRowKey(a)}
 										onToggle={() =>
-											setOpenName(
-												openName === agentRowKey(a) ? null : agentRowKey(a),
-											)
+											setOpenName(openName === agentRowKey(a) ? null : agentRowKey(a))
 										}
 									/>
 								))}
@@ -298,22 +274,14 @@ function AgentDisplayRow({
 		<>
 			<TableRow className="cursor-pointer" onClick={onToggle}>
 				<TableCell>
-					{open ? (
-						<ChevronDown className="h-4 w-4" />
-					) : (
-						<ChevronRight className="h-4 w-4" />
-					)}
+					{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
 				</TableCell>
 				<TableCell className="font-medium">{agent.name}</TableCell>
 				<TableCell>
 					<Badge
 						variant={sourceBadgeVariant[classified.tier]}
 						className="font-mono text-xs"
-						title={
-							classified.projectId !== null
-								? `project:${classified.projectId}`
-								: undefined
-						}
+						title={classified.projectId !== null ? `project:${classified.projectId}` : undefined}
 					>
 						{classified.label}
 					</Badge>

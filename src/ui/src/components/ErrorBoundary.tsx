@@ -64,8 +64,8 @@ export class ErrorBoundary extends Component<Props, State> {
 			<div className="space-y-4">
 				<Alert variant="danger" title="This page failed to render">
 					<p>
-						Something in this view threw while rendering. The rest of the app is
-						still usable — pick another page from the sidebar, or retry.
+						Something in this view threw while rendering. The rest of the app is still usable — pick
+						another page from the sidebar, or retry.
 					</p>
 					<pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-(--color-muted) p-3 font-mono text-xs">
 						{error.message}

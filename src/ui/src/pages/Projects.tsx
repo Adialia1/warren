@@ -4,21 +4,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { projectsApi } from "@/api/client.ts";
 import type { ProjectRow } from "@/api/types.ts";
-import {
-	compareStrings,
-	type Comparator,
-	useClientSort,
-} from "@/hooks/use-client-sort.ts";
-import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
-import { EmptyState } from "@/components/ui/empty-state.tsx";
-import { PageHeader } from "@/components/ui/page-header.tsx";
-import { responsiveCardHeaderRow } from "@/components/ui/responsive.ts";
-import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Dialog,
 	DialogContent,
@@ -27,8 +17,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog.tsx";
+import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
+import { responsiveCardHeaderRow } from "@/components/ui/responsive.ts";
+import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
 	TableBody,
@@ -37,10 +32,17 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import { type Comparator, compareStrings, useClientSort } from "@/hooks/use-client-sort.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
 
-type ProjectSortKey = "id" | "gitUrl" | "defaultBranch" | "lastHeadSha" | "lastFetchedAt" | "addedAt";
+type ProjectSortKey =
+	| "id"
+	| "gitUrl"
+	| "defaultBranch"
+	| "lastHeadSha"
+	| "lastFetchedAt"
+	| "addedAt";
 
 const PROJECT_COMPARATORS: Record<ProjectSortKey, Comparator<ProjectRow>> = {
 	id: (a, b) => compareStrings(a.id, b.id),
@@ -69,8 +71,7 @@ export function ProjectsPage() {
 	);
 
 	const create = useMutation({
-		mutationFn: (input: { gitUrl: string; defaultBranch?: string }) =>
-			projectsApi.create(input),
+		mutationFn: (input: { gitUrl: string; defaultBranch?: string }) => projectsApi.create(input),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
 	});
 	const del = useMutation({
@@ -116,7 +117,9 @@ export function ProjectsPage() {
 				</CardHeader>
 				<CardContent className="p-0">
 					{projects.isLoading ? (
-						<div className="p-6"><Spinner label="Loading projects" /></div>
+						<div className="p-6">
+							<Spinner label="Loading projects" />
+						</div>
 					) : projects.isError ? (
 						<div className="p-6">
 							<Alert variant="danger" title="Failed to load projects">
@@ -124,10 +127,7 @@ export function ProjectsPage() {
 							</Alert>
 						</div>
 					) : projects.data?.projects.length === 0 ? (
-						<EmptyState
-							title="No projects yet"
-							description="Add one with a GitHub URL above."
-						/>
+						<EmptyState title="No projects yet" description="Add one with a GitHub URL above." />
 					) : (
 						<Table>
 							<TableHeader>
@@ -177,44 +177,40 @@ export function ProjectsPage() {
 											{p.lastHeadSha !== null ? p.lastHeadSha.slice(0, 7) : "—"}
 										</TableCell>
 										<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
-											{p.lastFetchedAt !== null
-												? formatTimestamp(p.lastFetchedAt)
-												: "never"}
+											{p.lastFetchedAt !== null ? formatTimestamp(p.lastFetchedAt) : "never"}
 										</TableCell>
 										<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
 											{formatTimestamp(p.addedAt)}
 										</TableCell>
 										<OperatorOnly capability="admin">
-										<TableCell>
-											<div className="flex gap-1">
-												<Button
-													variant="ghost"
-													size="icon"
-													onClick={() => refresh.mutate(p.id)}
-													disabled={
-														refresh.isPending && refresh.variables === p.id
-													}
-													aria-label={`Refresh ${p.id}`}
-													title="git fetch + reset --hard origin/<branch>"
-												>
-													<RefreshCw
-														className={`h-4 w-4 ${
-															refresh.isPending && refresh.variables === p.id
-																? "animate-spin"
-																: ""
-														}`}
-													/>
-												</Button>
-												<Button
-													variant="ghost"
-													size="icon"
-													onClick={() => setConfirmDelete(p)}
-													aria-label={`Delete ${p.id}`}
-												>
-													<Trash2 className="h-4 w-4" />
-												</Button>
-											</div>
-										</TableCell>
+											<TableCell>
+												<div className="flex gap-1">
+													<Button
+														variant="ghost"
+														size="icon"
+														onClick={() => refresh.mutate(p.id)}
+														disabled={refresh.isPending && refresh.variables === p.id}
+														aria-label={`Refresh ${p.id}`}
+														title="git fetch + reset --hard origin/<branch>"
+													>
+														<RefreshCw
+															className={`h-4 w-4 ${
+																refresh.isPending && refresh.variables === p.id
+																	? "animate-spin"
+																	: ""
+															}`}
+														/>
+													</Button>
+													<Button
+														variant="ghost"
+														size="icon"
+														onClick={() => setConfirmDelete(p)}
+														aria-label={`Delete ${p.id}`}
+													>
+														<Trash2 className="h-4 w-4" />
+													</Button>
+												</div>
+											</TableCell>
 										</OperatorOnly>
 									</TableRow>
 								))}
@@ -236,16 +232,14 @@ export function ProjectsPage() {
 						<DialogDescription>
 							{confirmDelete !== null ? (
 								<>
-									This removes <code>{confirmDelete.localPath}</code> from disk
-									and the project row. Run history for this project is kept.
+									This removes <code>{confirmDelete.localPath}</code> from disk and the project row.
+									Run history for this project is kept.
 								</>
 							) : null}
 						</DialogDescription>
 					</DialogHeader>
 					{del.isError ? (
-						<p className="text-sm text-(--color-destructive)">
-							{formatError(del.error)}
-						</p>
+						<p className="text-sm text-(--color-destructive)">{formatError(del.error)}</p>
 					) : null}
 					<DialogFooter>
 						<Button
@@ -324,9 +318,7 @@ function AddProjectForm({
 						</Button>
 					</div>
 				</form>
-				{error !== null ? (
-					<p className="mt-3 text-sm text-(--color-destructive)">{error}</p>
-				) : null}
+				{error !== null ? <p className="mt-3 text-sm text-(--color-destructive)">{error}</p> : null}
 			</CardContent>
 		</Card>
 	);

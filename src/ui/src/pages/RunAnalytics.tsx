@@ -35,11 +35,11 @@ import {
 	TopSeedsByContextChart,
 } from "./run-analytics/Charts.tsx";
 import { CommandCategoryChart, StuckCommandTable } from "./run-analytics/CommandMining.tsx";
-import { TokenConsumptionChart } from "./run-analytics/TokenConsumptionChart.tsx";
 import { InsightCallouts } from "./run-analytics/Insights.tsx";
 import { KpiCards } from "./run-analytics/KpiCards.tsx";
 import { GroupTable } from "./run-analytics/Tables.tsx";
-import { TokenKpiCards, TokenGroupTable } from "./run-analytics/TokenStats.tsx";
+import { TokenConsumptionChart } from "./run-analytics/TokenConsumptionChart.tsx";
+import { TokenGroupTable, TokenKpiCards } from "./run-analytics/TokenStats.tsx";
 
 /** Default date window: last 30 days. Mirrors the server default. */
 function defaultFrom(): string {
@@ -157,8 +157,7 @@ export function RunAnalyticsPage() {
 			{analytics.isError ? (
 				<Card>
 					<CardContent className="py-6 text-sm text-(--color-destructive)">
-						Failed to load run analytics.{" "}
-						{(analytics.error as Error | null)?.message ?? ""}
+						Failed to load run analytics. {(analytics.error as Error | null)?.message ?? ""}
 					</CardContent>
 				</Card>
 			) : null}
@@ -194,8 +193,7 @@ export function RunAnalyticsPage() {
 			{behavior.isError ? (
 				<Card>
 					<CardContent className="py-6 text-sm text-(--color-destructive)">
-						Failed to load command behavior.{" "}
-						{(behavior.error as Error | null)?.message ?? ""}
+						Failed to load command behavior. {(behavior.error as Error | null)?.message ?? ""}
 					</CardContent>
 				</Card>
 			) : null}

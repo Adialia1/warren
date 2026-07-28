@@ -57,7 +57,9 @@ function TokenKpiCard({
 export function TokenKpiCards({
 	totals,
 }: {
-	totals: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } | undefined;
+	totals:
+		| { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
+		| undefined;
 }) {
 	const dash = "—";
 
@@ -81,11 +83,7 @@ export function TokenKpiCards({
 			<TokenKpiCard
 				title="Input / Output split"
 				value={
-					totals === undefined
-						? dash
-						: total === 0
-							? "—"
-							: `${formatPercent(input / total)} in`
+					totals === undefined ? dash : total === 0 ? "—" : `${formatPercent(input / total)} in`
 				}
 				hint={
 					totals === undefined
@@ -99,9 +97,7 @@ export function TokenKpiCards({
 				title="Cache-read share"
 				value={totals === undefined ? dash : formatPercent(cacheReadShare)}
 				hint={
-					totals === undefined
-						? undefined
-						: `${formatTokensOrDash(cacheRead)} cache-read tokens`
+					totals === undefined ? undefined : `${formatTokensOrDash(cacheRead)} cache-read tokens`
 				}
 			/>
 		</div>

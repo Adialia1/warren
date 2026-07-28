@@ -29,10 +29,7 @@ import {
 } from "@/api/client.ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
-import {
-	responsiveCardHeaderRow,
-	responsiveFormControl,
-} from "@/components/ui/responsive.ts";
+import { responsiveCardHeaderRow, responsiveFormControl } from "@/components/ui/responsive.ts";
 import {
 	Table,
 	TableBody,
@@ -119,10 +116,7 @@ export function CostAnalyticsPage() {
 				<CardContent>
 					<div className="flex flex-wrap items-end gap-4">
 						<div className="flex flex-col gap-1">
-							<label
-								htmlFor="ca-from"
-								className="text-xs text-(--color-muted-foreground)"
-							>
+							<label htmlFor="ca-from" className="text-xs text-(--color-muted-foreground)">
 								From
 							</label>
 							<input
@@ -134,10 +128,7 @@ export function CostAnalyticsPage() {
 							/>
 						</div>
 						<div className="flex flex-col gap-1">
-							<label
-								htmlFor="ca-to"
-								className="text-xs text-(--color-muted-foreground)"
-							>
+							<label htmlFor="ca-to" className="text-xs text-(--color-muted-foreground)">
 								To
 							</label>
 							<input
@@ -149,10 +140,7 @@ export function CostAnalyticsPage() {
 							/>
 						</div>
 						<div className="flex flex-col gap-1">
-							<label
-								htmlFor="ca-project"
-								className="text-xs text-(--color-muted-foreground)"
-							>
+							<label htmlFor="ca-project" className="text-xs text-(--color-muted-foreground)">
 								Project
 							</label>
 							<select
@@ -194,8 +182,7 @@ export function CostAnalyticsPage() {
 			{analytics.isError ? (
 				<Card>
 					<CardContent className="py-6 text-sm text-(--color-destructive)">
-						Failed to load cost analytics.{" "}
-						{(analytics.error as Error | null)?.message ?? ""}
+						Failed to load cost analytics. {(analytics.error as Error | null)?.message ?? ""}
 					</CardContent>
 				</Card>
 			) : null}

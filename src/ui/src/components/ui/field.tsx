@@ -50,25 +50,11 @@ export interface FieldProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "
 }
 
 export const Field = React.forwardRef<HTMLDivElement, FieldProps>(
-	(
-		{
-			className,
-			label,
-			id,
-			htmlFor,
-			description,
-			error,
-			required,
-			children,
-			...props
-		},
-		ref,
-	) => {
+	({ className, label, id, htmlFor, description, error, required, children, ...props }, ref) => {
 		const controlId = id ?? htmlFor;
 		const descId = description !== undefined && controlId ? `${controlId}-desc` : undefined;
-		const errId = error !== undefined && error !== null && controlId
-			? `${controlId}-err`
-			: undefined;
+		const errId =
+			error !== undefined && error !== null && controlId ? `${controlId}-err` : undefined;
 		const describedBy = [descId, errId].filter(Boolean).join(" ") || undefined;
 		const ctl: FieldControlProps = {
 			id: controlId ?? "",
