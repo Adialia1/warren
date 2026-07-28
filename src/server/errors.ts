@@ -29,6 +29,11 @@
  * envelopes used by the router when no route matches or a route is a
  * scaffold-only stub; `forbidden` is the canned envelope the capability
  * gate returns when the admitted caller can't reach the matched route.
+ *
+ * `collectedErrorMessage` extends the same body/log split to errors a
+ * handler CATCHES and reports inside a 2xx body rather than throwing
+ * (warren-bf4c) — `renderError` never sees those, so they need their own
+ * entry point to the one policy.
  */
 
 import {
@@ -128,14 +133,41 @@ export function renderError(err: unknown, requestId?: string): RenderedError {
  * side, and telling the two apart on the wire is itself a small disclosure.
  */
 function internalError(requestId: string | undefined): RenderedError {
-	const hint =
-		requestId === undefined
-			? "check the warren server logs for the underlying error"
-			: `check the warren server logs for request id ${requestId}`;
 	return {
 		status: 500,
-		envelope: buildEnvelope("internal_error", INTERNAL_ERROR_MESSAGE, hint),
+		envelope: buildEnvelope("internal_error", INTERNAL_ERROR_MESSAGE, logPointerHint(requestId)),
 	};
+}
+
+/**
+ * The "your detail is in the logs, here's how to find it" cue. One
+ * spelling, shared by the generic 500 hint and by
+ * {@link collectedErrorMessage}, so a caller reads the same sentence
+ * whichever half of the body/log split withheld the text.
+ */
+function logPointerHint(requestId: string | undefined): string {
+	return requestId === undefined
+		? "check the warren server logs for the underlying error"
+		: `check the warren server logs for request id ${requestId}`;
+}
+
+/**
+ * The only message a CAUGHT error ever puts on the wire — the same
+ * body/log split as the untyped-500 path (warren-4385), applied where a
+ * handler catches a per-item failure and reports it inside a 2xx body
+ * instead of throwing it. Today's single call site is `POST
+ * /agents/refresh`'s `projectErrors[]` (warren-bf4c).
+ *
+ * Deliberately unconditional: unlike `renderError` it does NOT keep a
+ * `WarrenError`'s own message. The errors collected at such a site are
+ * canopy shell-outs whose `CanopyUnavailableError` messages interpolate
+ * `cn` / `git` stderr and the project's on-disk path (`formatStderr` in
+ * `src/registry/canopy.ts`), so the typed-is-vetted assumption
+ * `renderError` leans on does not hold there. The caller logs the real
+ * error under the same correlation id via {@link errorLogFields}.
+ */
+export function collectedErrorMessage(requestId?: string): string {
+	return `${INTERNAL_ERROR_MESSAGE}; ${logPointerHint(requestId)}`;
 }
 
 /**
