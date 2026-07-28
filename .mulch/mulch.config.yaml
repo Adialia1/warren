@@ -44,6 +44,7 @@ domains:
   quality-gates: {}
   k8s-deploy: {}
   testing: {}
+  types: {}
 governance:
   max_entries: 100
   warn_entries: 150
