@@ -10,6 +10,17 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+### Security
+
+- **`fix(server)`** — `POST /agents/refresh` no longer forwards the caught
+  error's own text in its `projectErrors[]` rows (warren-bf4c). Those
+  errors are canopy shell-outs, so the message carried `cn` / `git`
+  stderr, the project's absolute `localPath`, and — on a clone failure —
+  a remote URL with the embedded token. Each row now carries the same
+  fixed stand-in the unhandled-500 path uses (warren-4385) plus the
+  request id; the `code` is kept but must be identifier-shaped. The real
+  message and stack go to the request logger under that id.
+
 ## [0.11.0] — 2026-07-27
 
 The subtraction release. Two whole features — conversations (Leveret) and

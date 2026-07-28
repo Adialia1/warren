@@ -17,6 +17,7 @@ import {
 } from "../runtime/errors.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import {
+	collectedErrorMessage,
 	errorLogFields,
 	forbidden,
 	INTERNAL_ERROR_MESSAGE,
@@ -176,6 +177,17 @@ describe("renderError — fallthrough (warren-4385)", () => {
 		expect(body).not.toContain("/data/warren");
 		expect(body).not.toContain(process.cwd());
 		expect(body).not.toContain("ENOENT");
+	});
+});
+
+describe("collectedErrorMessage (warren-bf4c)", () => {
+	test("is the generic message plus the correlation id, whatever was caught", () => {
+		expect(collectedErrorMessage("req-1")).toContain(INTERNAL_ERROR_MESSAGE);
+		expect(collectedErrorMessage("req-1")).toContain("req-1");
+	});
+
+	test("without a correlation id it still points at the logs", () => {
+		expect(collectedErrorMessage()).toContain("check the warren server logs");
 	});
 });
 

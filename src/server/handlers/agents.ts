@@ -18,6 +18,7 @@ import {
 	refreshProjectAgents,
 } from "../../registry/refresh.ts";
 import { readProviderFrontmatter } from "../../registry/schema.ts";
+import { collectedErrorMessage, errorLogFields } from "../errors.ts";
 import { isPublicOnly, pickFields } from "../projection.ts";
 import { jsonResponse } from "../response.ts";
 import type { Actor, RouteContext, RouteHandler, ServerDeps } from "../types.ts";
@@ -163,11 +164,45 @@ export function getAgentHandler(deps: ServerDeps): RouteHandler {
  * projects loop. Surfaced in the response envelope so the operator
  * can spot a project whose `.canopy/` is misconfigured without
  * tanking the library half of the refresh.
+ *
+ * `message` is a FIXED stand-in, never the caught error's own text
+ * (warren-bf4c) — see `collectProjectRefreshError`.
  */
 interface ProjectRefreshError {
 	readonly projectId: string;
 	readonly code: string;
 	readonly message: string;
+}
+
+/**
+ * Map one caught per-project refresh failure onto its wire row, and send
+ * the real error to the request logger (warren-bf4c — same disclosure
+ * class as warren-4385).
+ *
+ * The loop catches whatever `refreshProjectAgents` threw, which is
+ * usually a `CanopyUnavailableError` whose message interpolates `cn`
+ * stderr and the project's absolute `localPath`, and can be any untyped
+ * error from a deeper layer. None of that belongs in a response, so the
+ * row carries `collectedErrorMessage()` and the detail goes to
+ * `ctx.logger` — already bound to the same `request_id` the message
+ * quotes, so an operator loses nothing.
+ *
+ * `code` survives because it is a machine label rather than free text,
+ * but it is shape-checked: an arbitrary thrown object can carry any
+ * string under `code`, and that would reopen the hole `message` just
+ * closed.
+ */
+export function collectProjectRefreshError(
+	projectId: string,
+	err: unknown,
+	ctx: Pick<RouteContext, "logger" | "requestId">,
+): ProjectRefreshError {
+	ctx.logger.error({ ...errorLogFields(err), projectId }, "agents.refresh_project_tier_failed");
+	return {
+		projectId,
+		code: errorCode(err),
+		message: collectedErrorMessage(ctx.requestId),
+	};
 }
 
 /** Per-project refresh outcome used by both the all-projects loop and
@@ -206,7 +241,7 @@ export function projectCanopyClient(deps: ServerDeps, projectPath: string): Cano
 }
 
 export function refreshAgentsHandler(deps: ServerDeps): RouteHandler {
-	return async () => {
+	return async (ctx) => {
 		// No canopy library configured (warren-d3e9): refresh has nothing
 		// to refresh against. 400 with a friendly hint is more useful than
 		// 200-with-empty-arrays — the operator's mental model is "I asked
@@ -246,11 +281,7 @@ export function refreshAgentsHandler(deps: ServerDeps): RouteHandler {
 				});
 				projectOutcomes.push(decorateRefreshResult(result));
 			} catch (err) {
-				projectErrors.push({
-					projectId: project.id,
-					code: errorCode(err),
-					message: err instanceof Error ? err.message : String(err),
-				});
+				projectErrors.push(collectProjectRefreshError(project.id, err, ctx));
 			}
 		}
 
@@ -280,14 +311,25 @@ export function refreshProjectAgentsHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
+ * Shape a stable machine code has: a bare identifier. `canopy_unavailable`,
+ * `agent_schema_error`, a node `ENOENT`. Anything else — a sentence, a
+ * path, a command line — is prose wearing a `code` field and is dropped
+ * (warren-bf4c).
+ */
+const ERROR_CODE_SHAPE = /^[a-z][a-z0-9_]{0,63}$/i;
+
+/**
  * Best-effort extraction of a `code` string off an error caught in the
  * all-projects refresh loop. Canopy/Warren errors carry one; arbitrary
- * Errors fall back to a generic label.
+ * Errors fall back to a generic label, as does any `code` that isn't
+ * identifier-shaped — the row's `message` is fixed (warren-bf4c), so an
+ * unvetted `code` would be the remaining way for caught text to reach the
+ * response.
  */
 function errorCode(err: unknown): string {
 	if (err !== null && typeof err === "object" && "code" in err) {
 		const code = (err as { code: unknown }).code;
-		if (typeof code === "string") return code;
+		if (typeof code === "string" && ERROR_CODE_SHAPE.test(code)) return code;
 	}
 	return "internal_error";
 }

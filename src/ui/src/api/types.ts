@@ -336,7 +336,7 @@ export interface RefreshSkipped {
 	code: string;
 }
 
-/** One per-project failure inside `POST /agents/refresh` (warren-4f6c). */
+/** One per-project failure in `POST /agents/refresh`; `message` is fixed (warren-bf4c). */
 export interface ProjectRefreshErrorRow {
 	projectId: string;
 	code: string;
