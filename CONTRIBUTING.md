@@ -1,6 +1,6 @@
 # Contributing to Warren
 
-Thanks for your interest in contributing to Warren! This guide covers everything you need to get started.
+Thanks for your interest in contributing to Warren! This guide covers everything you need to get started. [`docs/README.md`](docs/README.md) indexes every other operator and contributor document.
 
 ## Getting Started
 
@@ -14,9 +14,9 @@ Thanks for your interest in contributing to Warren! This guide covers everything
    ```bash
    bun install
    ```
-4. **Link** the CLI for local development:
+4. **Run** the CLI straight from the checkout — warren is not published to npm, so there is no global install:
    ```bash
-   bun link
+   bun run src/cli/main.ts --help
    ```
 5. **Create a branch** for your work:
    ```bash
@@ -68,8 +68,9 @@ Warren is a strict TypeScript project that runs directly on Bun (no build step).
 
 ### File Organization
 
-- All shared types go in `src/types.ts`
-- Each CLI command gets its own file in `src/commands/`
+- Types live with the domain that owns them: `src/core/` for ids and the error hierarchy, `src/server/types.ts` for the HTTP wire shapes, and `src/runs/`, `src/projects/`, `src/registry/` for their own
+- UI types are a separate package and live in `src/ui/src/api/types.ts`
+- Each CLI command gets its own file in `src/cli/commands/`
 - Import with `.ts` extensions
 
 ## Testing Conventions
@@ -108,10 +109,10 @@ describe("my-feature", () => {
 
 ## Adding a New Command
 
-1. Create `src/commands/<name>.ts`
-2. Register the command in `src/index.ts`
-3. Add tests in `src/commands/<name>.test.ts`
-4. Update the CLI Reference in `README.md`
+1. Create `src/cli/commands/<name>.ts`, exporting a pure `run<Name>` function
+2. Import it in `src/cli/main.ts` and add its `case` to the subcommand dispatch
+3. Add tests in `src/cli/commands/<name>.test.ts`
+4. Add a row to the `## CLI` table in `README.md`
 
 ## Commit Message Style
 

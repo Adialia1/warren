@@ -14,8 +14,7 @@
  *
  * Extracted verbatim (behavior-identical) from burrow's `src/secrets/op.ts`
  * into warren's workspace cluster; the only change is the error class, which now
- * comes from `src/workspace/errors.ts` (see `docs/design/k8s-migration-plan.md`
- * §5.A). No burrow-repo imports.
+ * comes from `src/workspace/errors.ts`. No burrow-repo imports.
  */
 
 import { SecretResolutionError } from "./errors.ts";

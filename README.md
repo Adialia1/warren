@@ -346,7 +346,7 @@ bun run ui:install
 bun run ui:dev
 ```
 
-The acceptance harness in [`scripts/acceptance/`](scripts/acceptance/) drives 37 scenarios against a live container. See [ACCEPTANCE.md](ACCEPTANCE.md) for the runbook. See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming, testing conventions, and PR expectations.
+The acceptance harness in [`scripts/acceptance/`](scripts/acceptance/) drives 37 scenarios against a live container. See [ACCEPTANCE.md](ACCEPTANCE.md) for the runbook. See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming, testing conventions, and PR expectations. [docs/README.md](docs/README.md) indexes every document in the repo.
 
 ## Project layout
 

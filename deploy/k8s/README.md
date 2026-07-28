@@ -1,10 +1,6 @@
 # Warren Kubernetes manifests
 
-Manifests + RBAC for running the warren control plane on Kubernetes with
-pod-per-run agent sandboxes (design [`docs/design/k8s-migration.md`](../../docs/design/k8s-migration.md)
-§6.2/§6.3/R5/Q4 and [`k8s-migration-plan.md`](../../docs/design/k8s-migration-plan.md)
-§3.2). Hosted target is **GKE Autopilot**; everything applies on **kind**/**k3d**
-for local validation.
+Manifests + RBAC for running the warren control plane on Kubernetes with pod-per-run agent sandboxes (design [`docs/design/k8s-migration.md`](../../docs/design/k8s-migration.md) §6.2/§6.3/R5/Q4). The operator runbook is [`docs/RUNBOOK-K8S.md`](../../docs/RUNBOOK-K8S.md). Hosted target is **GKE Autopilot**; everything applies on **kind**/**k3d** for local validation.
 
 ## Layout
 

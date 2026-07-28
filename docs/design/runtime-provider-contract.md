@@ -1,8 +1,10 @@
 # RuntimeProvider Contract — Design Spike
 
-**Status:** Design — the seam that unblocks the migration branch
+> **HISTORICAL — shipped in v0.10.0.** This document is a design record, not a plan in flight. The contract below now lives in `src/runtime/contract.ts`, and both backends implement it — see [`docs/RUNBOOK-K8S.md`](../RUNBOOK-K8S.md) §0 for the operator view. Read the code when the two disagree.
+
+**Status:** Design — the seam that unblocked the migration branch
 **Date:** 2026-07-09
-**Feeds:** [`k8s-migration-plan.md`](./k8s-migration-plan.md) §5.B (`runtime-contract`)
+**Companion:** [`k8s-migration.md`](./k8s-migration.md) — the architecture record this seam serves
 **Grounded in:** three codebase ground-truth audits (dispatch/RunSpec, event/status,
 steer/terminate/capabilities), 2026-07-09.
 
