@@ -10,6 +10,23 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-07-28
+
+`v0.12.0` is tagged but has no container image — its commit cannot be
+built. Use this release instead; it carries the same code plus the build
+fix. Nothing in the application changed.
+
+### Fixed
+
+- **`fix(docker)`** — the image's UI stage now copies `src/core` beside
+  `src/ui` (warren-1841). warren-b229 moved the wire vocabulary into
+  `src/core/wire.ts` and `src/ui/src/api/types.ts` imports it across that
+  package seam, but the stage copied only `src/ui`, so the specifier
+  pointed outside the build context and the build died with TS2307. All
+  12 gates and `bun run build:ui` stayed green throughout, because a full
+  checkout has the file — no gate builds the image, which is why the
+  first sighting was a release build.
+
 ## [0.12.0] — 2026-07-28
 
 The public-instance release. Warren can now serve a read-only audience
