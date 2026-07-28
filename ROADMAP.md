@@ -13,7 +13,7 @@ Status vocabulary: `now`, `next`, `shipped`, `not-in-core`.
 
 ## Now — in flight
 
-- **Public read-only instance** (warren-1841, plan `pl-b82d`). The auth stack landed on main. It carries a capability-bearing `Actor`, a `PublicReadProvider` behind `WARREN_AUTH`, and a declarative route policy table. It also carries public response projections, an event scrubber, `GET /whoami`, a UI capability layer, and Cloud Armor. The cutover stays open, and `app.warren.run` answers 401 to anonymous callers today.
+- **Public read-only instance** (warren-1841, plan `pl-b82d`). The cutover landed. `app.warren.run` serves anonymous readers today, and `GET /whoami` answers `readPublic`. Projects, runs, agents, and event streams read without a token. The auth stack behind it carries a capability-bearing `Actor`, a `PublicReadProvider` behind `WARREN_AUTH`, and a declarative route policy table. It also carries public response projections, an event scrubber, a UI capability layer, and Cloud Armor. Hardening seeds stay open.
 - **Public-facing readiness** (plan `pl-b82d`). A docs truth pass, one shared home for the wire vocabulary, a data-driven layer gate, and `src/ui` under the quality gates.
 - **Deletion-pass closeout** (plan `pl-3a79`). Conversations, plot, and canopy are all gone. The last open step evicts the mulch and seeds mirrors off `finalize()` onto the Tier-1 event bus (warren-df3e).
 

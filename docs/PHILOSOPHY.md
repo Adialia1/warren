@@ -157,10 +157,14 @@ escape hatch:
 
 - **No bundled workflow opinions** — plot/intent, chat, plan orchestration
   are extensions you can decline to load, not core you rip out.
-- **No forge monoculture** — GitHub is implementation #1 of `Forge`, not
-  an assumption. The kernel's contract with the world is a pushed branch.
-- **No issue-tracker monoculture** — seeds is implementation #1 of
-  `IssueTracker`, not a structural dependency.
+- **No forge monoculture** — the kernel's contract with the world is a
+  pushed branch. GitHub remains an assumption in the code today
+  (`api.github.com` appears in three modules), so read this entry as a
+  standard the code must reach. The seam table above marks `Forge` as
+  planned.
+- **No issue-tracker monoculture** — seeds remains a structural dependency
+  today, not implementation #1. The seam table marks `IssueTracker` as
+  planned, and the same reading applies.
 - **No agent-runtime semantics in the sandbox layer** — burrow runs a
   command and streams output; what a claude-code vs. pi event *means* is
   warren's adapter's job.

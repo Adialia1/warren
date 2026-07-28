@@ -12,11 +12,10 @@ Spawn cloud agents at your GitHub repos. Watch them work live, steer them mid-ru
 
 [**Watch the demo**](https://youtu.be/daa7y8g9BkM) — a run dispatched, streamed, steered, and reaped.
 
-<!-- TODO(warren-1841): add the read-only public instance link (https://app.warren.run)
-     here once the public cutover lands. Anonymous GET /runs still answers 401,
-     so a link today would be a dead end for a first-time reader. A run-detail
-     screenshot or GIF belongs in this slot too — the repo ships no such asset
-     yet (branding/ holds the logo only). -->
+[**Watch it live**](https://app.warren.run) — the public read-only instance. Real projects, real runs, live event streams, no login.
+
+<!-- TODO: this slot still wants a run-detail screenshot or GIF. The repo ships
+     no such asset yet (branding/ holds the logo only). -->
 
 > The Coolify of coding agents. Self-hosted control plane: point it at a repo, bring your own key, agents run in sandboxes on your infra, PRs come out.
 
