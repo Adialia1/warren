@@ -1,30 +1,37 @@
-export type RunState = "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
+/* ----------------------------------------------------------------------- */
+/* Canonical wire vocabulary (warren-b229).                                 */
+/*                                                                          */
+/* Run / preview lifecycle states, the failure-cause discriminator, run     */
+/* mode and the inbox classes are DEFINED ONCE in `src/core/wire.ts` and    */
+/* re-exported here so the SDK's import surface is unchanged. Never         */
+/* redeclare one of these names — `check:wire-types` (warren-d371) fails    */
+/* the build if you do.                                                     */
+/* ----------------------------------------------------------------------- */
+import type {
+	AgentSource,
+	CloneKind,
+	EventStream,
+	InboxPriority,
+	InboxState,
+	PreviewState,
+	RunFailureReason,
+	RunMode,
+	RunState,
+} from "../core/wire.ts";
 
-export type RunTerminalState = "succeeded" | "failed" | "cancelled";
-
-/** Canonical set of terminal run states. Mirrors src/db/schema.ts RUN_TERMINAL_STATES. */
-export const RUN_TERMINAL_STATES: ReadonlySet<RunState> = new Set([
-	"succeeded",
-	"failed",
-	"cancelled",
-]);
-
-export function isTerminalRunState(state: RunState): state is RunTerminalState {
-	return RUN_TERMINAL_STATES.has(state);
-}
-
-export type RunFailureReason =
-	| "never_started"
-	| "no_model_response"
-	| "crashed"
-	| "timed_out"
-	| "burrow_run_lost"
-	| "burrow_unreachable"
-	| "dropped_commit"
-	| "provider_error"
-	| "oom_killed";
-
-export type PreviewState = "starting" | "live" | "failed" | "torn-down";
+export {
+	type AgentSource,
+	type CloneKind,
+	type EventStream,
+	type InboxState,
+	isTerminalRunState,
+	type PreviewState,
+	RUN_TERMINAL_STATES,
+	type RunFailureReason,
+	type RunMode,
+	type RunState,
+	type RunTerminalState,
+} from "../core/wire.ts";
 
 /**
  * Identity discriminant reported by `GET /whoami` (warren-e195). Mirrors
@@ -44,8 +51,6 @@ export interface WhoamiResponse {
 	identity: ActorIdentity;
 	capabilities: CapabilityName[];
 }
-
-export type AgentSource = "builtin" | "library" | `project:${string}`;
 
 export interface AgentRow {
 	name: string;
@@ -116,8 +121,8 @@ export interface RunRow {
 	seedId: string | null;
 	/** Chain back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId: string | null;
-	cloneKind: "replicate" | "continue" | null;
-	mode: "batch";
+	cloneKind: CloneKind | null;
+	mode: RunMode;
 	renderedAgentJson: unknown;
 	state: RunState;
 	failureReason: RunFailureReason | null;
@@ -145,7 +150,7 @@ export interface RunEvent {
 	seq: number;
 	ts: string;
 	kind: string;
-	stream: "stdout" | "stderr" | "system" | null;
+	stream: EventStream | null;
 	payload: unknown;
 }
 
@@ -245,8 +250,12 @@ export interface RefreshProjectResponse {
 	ref: string;
 }
 
-/** Burrow inbox message priority. Mirrors `MESSAGE_PRIORITIES` from `@os-eco/burrow-cli`. */
-export type MessagePriority = "low" | "normal" | "high" | "urgent";
+/**
+ * Burrow inbox message priority. Alias of the canonical `InboxPriority`
+ * (`src/core/wire.ts`), kept under the SDK's historical name; both mirror
+ * `MESSAGE_PRIORITIES` from `@os-eco/burrow-cli`.
+ */
+export type MessagePriority = InboxPriority;
 
 /** Burrow inbox message row returned by `POST /runs/:id/steer`. */
 export interface InboxMessage {
@@ -254,8 +263,8 @@ export interface InboxMessage {
 	burrowId: string;
 	fromActor: string;
 	body: string;
-	priority: MessagePriority;
-	state: "unread" | "delivered" | "failed";
+	priority: InboxPriority;
+	state: InboxState;
 	deliveredAtRunId: string | null;
 	createdAt: string;
 	deliveredAt: string | null;
@@ -264,7 +273,7 @@ export interface InboxMessage {
 export interface SteerRunInput {
 	/** Steering body — non-empty after trim. */
 	body: string;
-	priority?: MessagePriority;
+	priority?: InboxPriority;
 	/** Actor identifier recorded on the burrow message. */
 	fromActor?: string;
 }

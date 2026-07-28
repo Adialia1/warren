@@ -11,7 +11,7 @@ import type {
 	RunEvent,
 	RunRow,
 } from "@/api/types.ts";
-import { PREVIEW_ACTIVE_STATES, RUN_TERMINAL_STATES } from "@/api/types.ts";
+import { isActivePreviewState, isTerminalRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
 import { StatusIndicator } from "@/components/StatusIndicator.tsx";
@@ -64,12 +64,12 @@ export function RunDetailPage() {
 		refetchInterval: (q) => {
 			const data = q.state.data;
 			if (!data) return 5000;
-			return RUN_TERMINAL_STATES.includes(data.state) ? false : 3000;
+			return isTerminalRunState(data.state) ? false : 3000;
 		},
 	});
 
 	const isTerminal =
-		run.data !== undefined && RUN_TERMINAL_STATES.includes(run.data.state);
+		run.data !== undefined && isTerminalRunState(run.data.state);
 	const stream = useEventStream(id, !isTerminal);
 
 	// Invalidate the run query when an event with a state-changing kind
@@ -424,7 +424,7 @@ function PreviewCard({ run }: { run: RunRow }) {
 		enabled: caps.can("readOperator"),
 	});
 	if (state === null) return null;
-	const isActive = PREVIEW_ACTIVE_STATES.includes(state);
+	const isActive = isActivePreviewState(state);
 	const canonicalUrl =
 		state === "live" && previewConfig.data !== undefined
 			? formatPreviewUrl(run.id, previewConfig.data, window.location.origin)

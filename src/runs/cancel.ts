@@ -48,8 +48,8 @@
  */
 
 import { ValidationError } from "../core/errors.ts";
+import { isTerminalRunState, type RunState } from "../core/wire.ts";
 import type { Repos } from "../db/repos/index.ts";
-import { RUN_TERMINAL_STATES, type RunState, type RunTerminalState } from "../db/schema.ts";
 import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
 import type { RunEventBroker } from "./events.ts";
@@ -246,10 +246,6 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
  */
 function reapSeamNotConfigured(): Promise<ReapRunResult> {
 	throw new Error("cancelRun: reap seam not configured (terminal cancel needs a pre-bound reap)");
-}
-
-function isTerminalRunState(state: RunState): state is RunTerminalState {
-	return (RUN_TERMINAL_STATES as readonly RunState[]).includes(state);
 }
 
 async function emitCancelEvent(

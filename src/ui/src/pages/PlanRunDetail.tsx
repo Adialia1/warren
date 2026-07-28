@@ -3,7 +3,7 @@ import { CircleStop } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { planRunsApi } from "@/api/client.ts";
 import type { PlanRunChildRow, PlanRunRow, RunRow } from "@/api/types.ts";
-import { PLAN_RUN_TERMINAL_STATES } from "@/api/types.ts";
+import { isTerminalPlanRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -27,7 +27,7 @@ export function PlanRunDetailPage() {
 		refetchInterval: (q) => {
 			const data = q.state.data;
 			if (!data) return 5000;
-			return PLAN_RUN_TERMINAL_STATES.includes(data.planRun.state) ? false : 5000;
+			return isTerminalPlanRunState(data.planRun.state) ? false : 5000;
 		},
 	});
 
