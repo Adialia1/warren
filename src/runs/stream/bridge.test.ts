@@ -68,6 +68,50 @@ describe("bridgeRunStream — event flow", () => {
 		expect(broker.subscriberCount(runId)).toBe(0);
 	});
 
+	test("drops per-delta message_update telemetry snapshots (never persisted or published)", async () => {
+		const published: string[] = [];
+		const sub = broker.subscribe(runId);
+		const consumer = (async () => {
+			for await (const row of sub) {
+				published.push(row.kind);
+				if (published.length >= 2) break;
+			}
+		})();
+
+		const messageUpdate = (seq: number): StreamEventView =>
+			evt(burrowRunId, seq, {
+				kind: "telemetry",
+				stream: "system",
+				payload: { type: "message_update", message: { role: "assistant", content: [] } },
+			});
+		const result = await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			source: source([
+				evt(burrowRunId, 1),
+				messageUpdate(2),
+				messageUpdate(3),
+				// Non-snapshot telemetry subtypes still persist.
+				evt(burrowRunId, 4, {
+					kind: "telemetry",
+					stream: "system",
+					payload: { type: "auto_retry_start" },
+				}),
+			]),
+		});
+		await consumer;
+
+		expect(result.written).toBe(2);
+		expect(result.skipped).toBe(0);
+		const rows = await repos.events.listByRun(runId);
+		expect(rows.map((e) => e.burrowEventSeq)).toEqual([1, 4]);
+		expect(published).toEqual(["text", "telemetry"]);
+	});
+
 	test("resume: skips events with seq <= MAX(burrow_event_seq)", async () => {
 		await repos.events.append({
 			runId,

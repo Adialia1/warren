@@ -130,6 +130,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 
 	let written = 0;
 	let skipped = 0;
+	let dropped = 0;
 	let errored = false;
 	let claimed = false;
 	let terminalDetected: { outcome: RunTerminalState } | undefined;
@@ -196,6 +197,10 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 					);
 					break;
 				}
+				continue;
+			}
+			if (isStreamingSnapshotTelemetry(event)) {
+				dropped += 1;
 				continue;
 			}
 			const row = await repos.events.append({
@@ -390,7 +395,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	}
 
 	input.logger?.info?.(
-		{ runId, burrowRunId, written, skipped, errored, burrowRunMissing },
+		{ runId, burrowRunId, written, skipped, dropped, errored, burrowRunMissing },
 		"run stream bridge ended",
 	);
 	if (burrowRunMissing) {
@@ -399,6 +404,27 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	return terminalDetected !== undefined
 		? { written, skipped, errored, terminalDetected }
 		: { written, skipped, errored };
+}
+
+/**
+ * Per-delta streaming snapshots the bridge deliberately does NOT persist
+ * (warren event-volume incident, 2026-07-30). Pi emits one
+ * `message_update` telemetry envelope per model stream delta, and each
+ * carries the FULL cumulative message so far — on per-token streams
+ * (kimi-k3 via openrouter) that is thousands of rows per run growing
+ * quadratically in payload (a single run reached 12k+ rows / ~50MB).
+ * Nothing reads them at rest: usage hydration scans only
+ * `kind=state_change` (`EventsRepo.listUsageEvents`), and the durable
+ * record of every message is the `message_end` explosion into
+ * `text`/`thinking`/`tool_use` rows. Other telemetry subtypes
+ * (`queue_update`, `auto_retry_*`) are rare and meaningful, so only the
+ * snapshot shape is dropped.
+ */
+function isStreamingSnapshotTelemetry(event: StreamEventView): boolean {
+	if (event.kind !== "telemetry") return false;
+	const p = event.payload;
+	if (p === null || typeof p !== "object" || Array.isArray(p)) return false;
+	return (p as { type?: unknown }).type === "message_update";
 }
 
 /**
