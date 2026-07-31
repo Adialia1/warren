@@ -127,6 +127,7 @@ describe("runDoctor", () => {
 			{
 				existsSync: () => true,
 				probeBurrow: async () => undefined,
+				platform: "linux",
 			},
 			{},
 		);

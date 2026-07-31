@@ -8,7 +8,7 @@ describe("checkBwrap", () => {
 		const { spawn, calls } = captureSpawnCalls({
 			bwrap: { stdout: "", exitCode: 0 },
 		});
-		const result = await checkBwrap({ spawn });
+		const result = await checkBwrap({ spawn, platform: "linux" });
 		expect(result.ok).toBe(true);
 		expect(result.message).toContain("sandbox");
 		// The probe must exercise real sandbox creation the way burrow's
@@ -32,7 +32,7 @@ describe("checkBwrap", () => {
 		const { spawn } = captureSpawnCalls({
 			bwrap: { stderr: "bwrap: setting up uid map: Permission denied", exitCode: 1 },
 		});
-		const result = await checkBwrap({ spawn });
+		const result = await checkBwrap({ spawn, platform: "linux" });
 		expect(result.ok).toBe(false);
 		expect(result.message).toContain("1");
 		expect(result.message).toContain("uid map");
@@ -44,7 +44,7 @@ describe("checkBwrap", () => {
 		const spawn: SpawnFn = async () => {
 			throw new Error("ENOENT bwrap");
 		};
-		const result = await checkBwrap({ spawn });
+		const result = await checkBwrap({ spawn, platform: "linux" });
 		expect(result.ok).toBe(false);
 		expect(result.message).toContain("ENOENT");
 		expect(result.hint).toContain("bubblewrap");
@@ -54,7 +54,7 @@ describe("checkBwrap", () => {
 		const { spawn, calls } = captureSpawnCalls({
 			"/usr/local/bin/bwrap": { stdout: "", exitCode: 0 },
 		});
-		await checkBwrap({ spawn, bwrapBinary: "/usr/local/bin/bwrap" });
+		await checkBwrap({ spawn, bwrapBinary: "/usr/local/bin/bwrap", platform: "linux" });
 		expect(calls[0]?.cmd?.[0]).toBe("/usr/local/bin/bwrap");
 		expect(calls[0]?.cmd).toContain("--unshare-all");
 	});

@@ -64,6 +64,12 @@ export interface DoctorDeps {
 	 * and the check degrades to an informational `ok: true`.
 	 */
 	readonly db?: AnyWarrenDb;
+	/**
+	 * Platform seam for the bwrap probe. Production omits it
+	 * (`checkBwrap` reads `process.platform`); tests force `"linux"` so
+	 * the probe path runs identically on macOS dev machines.
+	 */
+	readonly platform?: NodeJS.Platform;
 }
 
 export interface DoctorResult {
@@ -93,7 +99,12 @@ export async function runDoctor(
 	checks.push(projectsRootCheck(context.env, exists));
 
 	if (isLocalTopology) {
-		checks.push(await checkBwrap({ spawn: context.spawn }));
+		checks.push(
+			await checkBwrap({
+				spawn: context.spawn,
+				...(deps.platform !== undefined ? { platform: deps.platform } : {}),
+			}),
+		);
 	}
 
 	checks.push(await checkWarrenConfig({ projects: deps.projects ?? [] }));

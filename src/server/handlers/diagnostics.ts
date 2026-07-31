@@ -97,7 +97,10 @@ async function burrowReadyzChecks(deps: ServerDeps, spawn: SpawnFn): Promise<Dia
 	const burrowProbe = deps.burrowProbe;
 	return [
 		...(burrowProbe !== undefined ? [await burrowProbe()] : []),
-		await checkBwrap({ spawn }),
+		await checkBwrap({
+			spawn,
+			...(deps.platform !== undefined ? { platform: deps.platform } : {}),
+		}),
 		await staleBurrowWorkspacesReadyzCheck(deps),
 	];
 }

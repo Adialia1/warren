@@ -197,6 +197,12 @@ export interface ServerDeps {
 	 */
 	readonly spawn?: SpawnFn;
 	/**
+	 * Platform seam for the `/readyz` bwrap probe. Production omits it
+	 * (`checkBwrap` reads `process.platform`); tests force `"linux"` so
+	 * the probe path runs identically on macOS dev machines.
+	 */
+	readonly platform?: NodeJS.Platform;
+	/**
 	 * Seeds CLI deps (pl-bb70 step 4, warren-46cd). Threaded into `spawnRun`
 	 * so a successful manual dispatch with `seedId` stamps the seed's
 	 * warren-namespaced extensions (`role`, `trigger`, `lastRunId`,

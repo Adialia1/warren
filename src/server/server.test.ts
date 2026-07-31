@@ -57,6 +57,7 @@ async function depsFor(
 		spawn?: SpawnFn;
 		uiDistDir?: string | null;
 		db?: WarrenDb;
+		platform?: NodeJS.Platform;
 	} = {},
 ): Promise<ServerDeps> {
 	const burrowClient = makeBurrowClient();
@@ -80,6 +81,7 @@ async function depsFor(
 		logger: silentLogger,
 		uiDistDir: overrides.uiDistDir === undefined ? null : overrides.uiDistDir,
 		spawn: overrides.spawn ?? okSpawn,
+		...(overrides.platform !== undefined ? { platform: overrides.platform } : {}),
 	};
 }
 
@@ -461,7 +463,10 @@ describe("startServer — routes", () => {
 			}
 			return { stdout: "", stderr: "", exitCode: 0 };
 		};
-		handle = startServer(await depsFor(repos, undefined, { spawn: failBwrap }), tcpOpts());
+		handle = startServer(
+			await depsFor(repos, undefined, { spawn: failBwrap, platform: "linux" }),
+			tcpOpts(),
+		);
 		const res = await fetch(`${tcpUrl(handle)}/readyz`);
 		expect(res.status).toBe(503);
 		const body = (await res.json()) as {
