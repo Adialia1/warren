@@ -118,6 +118,8 @@ Supabase Postgres is the reference backend. Three of its gotchas each cost a dep
 - **Point at the session pooler host, not the direct host.** `db.<ref>.supabase.co` resolves over IPv6 only, and GKE Autopilot pods speak IPv4 by default. Use `aws-1-<region>.pooler.supabase.com:5432` with the tenant username form `postgres.<ref>`. The older `aws-0-` pooler generation answers "tenant not found".
 - **Single-quote the value in a shell.** The `&` in the query string forks the command otherwise.
 
+**Pre-migration snapshot (rollback anchor).** Before the Fly→GKE cutover, the operator took a full `pg_dump -Fc` snapshot of the production DB on 2026-07-13: `~/warren-backups/warren-supabase-2026-07-13.dump` on the operator workstation (1.7 GB, from an 11 GB source DB that is almost all `events`). A `pg_restore --list` check confirmed the TOC holds all 12 then-public tables, including the since-dropped `workers`/`burrows`. This snapshot is the restore point for anything that predates the cutover.
+
 ### 1.6 Automated CI/CD (GitHub Actions)
 
 `.github/workflows/deploy-gke.yml` automates §1.2 (build and push) and §1.3 (apply).
