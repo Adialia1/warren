@@ -22,8 +22,10 @@ locally — including for repairs. The pipeline was proven 2026-07-28
   provider `openrouter`, model `moonshotai/kimi-k3`, on the `pi`
   harness (the only harness that can reach OpenRouter; it is also the
   project `defaultRole`). Offer the anthropic tiers
-  (`src/registry/builtins/model-tiers.ts`) as alternatives — e.g. the
-  opus-tier model for hard refactors. Dispatch with explicit
+  (`src/registry/builtins/model-tiers.ts`) as alternatives — for hard
+  or large refactors use `claude-opus-5` (Opus 5; pass it as an
+  explicit `modelOverride` — do NOT rely on the opus tier's default,
+  which still pins the older claude-opus-4-8). Dispatch with explicit
   `providerOverride` + `modelOverride` matching the answer.
 - **Dispatch mode** — sequential one-at-a-time (default, what the
   operator chose last time) vs parallel. Sequential means: next issue
@@ -60,8 +62,10 @@ finish the batch inline.
 - **Project id**: `GET /projects`, match the gitUrl.
 - **Dispatch**: `POST /runs` with `{agent, project, prompt,
   modelOverride, seedId}`. Always pass `seedId` — it links the run to
-  the tracker. `GET /runs/:id` returns the run object BARE (no `run`
-  wrapper); terminal states are `succeeded|failed|cancelled`.
+  the tracker. Response shapes differ: `POST /runs` WRAPS the run
+  (`{run: {...}}`), while `GET /runs/:id` returns it BARE — parsing the
+  POST as bare reads all-null and invites a duplicate dispatch.
+  Terminal states are `succeeded|failed|cancelled`.
 - **Repair dispatch onto an existing PR branch**: same POST with
   `ref` = `targetBranch` = the PR's head branch. Warren pushes back to
   that branch in place; the agent must NOT open a new PR or branch.
