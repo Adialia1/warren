@@ -10,6 +10,36 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-07-31
+
+### Security
+
+- **Event-stream scrubber redacts URL userinfo, DSN passwords, and
+  JWTs** — credential shapes that previously survived into persisted
+  run events are now masked (warren-6fa0, #675). A follow-up widened
+  the scrubber's coverage as part of the seam-precursors work
+  (warren-9bbc, #683).
+
+### Added
+
+- **Nightly acceptance CI** — the remaining acceptance scenarios now
+  run in CI on a nightly schedule (#694), and the suite was un-rotted
+  after the pl-3a79 registry collapse (warren-e376, #695).
+- **Operator-configurable bot identity** via `WARREN_BOT_NAME` /
+  `WARREN_BOT_EMAIL` (default `warren <bot@warren.invalid>`), plus a
+  loud warn-level fallback when the agent author identity is unset
+  (warren-02cd, warren-6a28, #677).
+- **Lifecycle bus production emits** for `run_started` and
+  `event_emitted` (warren-28ca, #680), and seam precursors: a
+  capability-flags module, a 429 `rate_limited` failure class, and
+  wider wire-type guard stems (warren-9bbc, #683).
+- **`warren doctor --verbose`** surfaces raw probe output
+  (warren-2d14, #691).
+- **K8s ephemeral-storage knobs** — pod ephemeral-storage
+  requests/limits are now env-configurable (warren-4a95, #706).
+- **Auto-merge admits the deployment bot** via the
+  `AUTO_MERGE_BOT_LOGIN` repo variable (warren-980f, #679).
+
 ### Changed
 
 - **js-yaml 4 → 5** — config parsing migrates to js-yaml v5
@@ -19,6 +49,38 @@ Releases **0.9.10 and earlier** live in
   `!!merge` by default, `yes`/`no`/`on`/`off` are strings) and `dump`
   quotes per YAML 1.1, so `warren init` / `warren config migrate` output
   may differ cosmetically — semantics are unchanged.
+- **K8s `GET /runs/:id/events` closes after replay** instead of
+  following the live stream; the UI resumes via `sinceSeq` on
+  lifetime-cap close and the stream lifetime cap defaults ON
+  (#699, warren-3995, #693).
+- **`GET /agents` row shape is canonical in `src/core/wire.ts`**
+  (warren-4253, #688), and the UI dispatch dialogs migrated off
+  `renderedJson.frontmatter` (#690).
+- **Functional bwrap probe** — `/readyz` now proves bwrap can actually
+  nest a sandbox instead of only checking `--version`, with honest
+  sandbox reporting on macOS (#684).
+- **The warren project itself defaults to
+  `openrouter/moonshotai/kimi-k3`** on the pi harness (#681).
+- **Rule-8 deletions** — dead `mergePullRequest` code and the pause
+  machinery are gone (#682), and per-delta `message_update` telemetry
+  was dropped from event persistence.
+
+### Fixed
+
+- **K8s finalize honesty** — the reaper now outlasts warren's slowest
+  reap path, and `finalize_unposted` (agent never posted a result) is
+  split from `finalize_failed` so silent work discard is visible
+  (warren-5ea1, #698). `finalize_failed` runs are salvaged before their
+  workspace is destroyed (warren-cd3b, #685).
+- **Kubelet evictions surface as the run's failure cause** instead of a
+  generic pod loss (warren-4a95, #706).
+- **Ref-dispatch cuts the k8s workspace from the target ref**, not the
+  project's default branch (warren-dac8, #697), and
+  `spec.baseBranch` is forwarded in
+  `LocalProvider.buildBurrowsUpInput`, unlocking custom base branches
+  under the local runtime (#673).
+- **`warren add-project` no longer bypasses the public org allowlist**
+  — the CLI goes through the same `addProject` path as the API (#689).
 
 ## [0.13.0] — 2026-07-30
 
