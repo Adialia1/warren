@@ -45,6 +45,7 @@ domains:
   k8s-deploy: {}
   testing: {}
   types: {}
+  seeds-tracker: {}
 governance:
   max_entries: 100
   warn_entries: 150
