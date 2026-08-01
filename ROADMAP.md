@@ -28,17 +28,16 @@ The brake on all three is PHILOSOPHY rule 1: features pay for seams. Work with n
 | Runtime / sandbox | `RuntimeProvider` (`src/runtime/contract.ts`) | **Live** — local (burrow) + k8s. pl-829f closed 50/50, boundary lint enforced. |
 | Storage | dialect-aware db layer (`src/db/client.ts`) | **Live** — sqlite + postgres. |
 | Auth | `AuthProvider` (`src/server/auth.ts`) | **Live** — `NoAuth`, `BearerToken`, `PublicRead` behind `WARREN_AUTH` (pl-b82d). The GitHub App widening is `next`. |
-| Extensions (Tier 1) | lifecycle bus (`src/runs/lifecycle-bus.ts`, `warren-ext/v1`) | **Live, observe-only** — 4 of 6 hooks emit today. `run_started` and `event_emitted` are declared and do not emit. Phase 0 closes or marks that gap. |
+| Extensions (Tier 1) | lifecycle bus (`src/runs/lifecycle-bus.ts`, `warren-ext/v1`) | **Live, observe-only** — all 6 hooks emit in production (`run_started` + `event_emitted` wired in v0.13.1, warren-28ca). |
 | Forge | `Forge` — repo refs, git auth, PR open/find, checks, error taxonomy | `next` — paid by the GitHub App. Design doc first. |
 | Issue tracker | `IssueTracker` — capability-flagged (`supportsPlans`) | `next`, after the App campaign — paid by Linear. |
 | Agent runtime | `AgentRuntimeAdapter` phase 1 — terminal detect, usage, error classes, seed layout | `next` — already paid: pi and claude-code are two live implementations. Phase 2 (burrow repatriation) promoted to `next` 2026-07-30 — see the burrow-absorption decision. |
 
 ## Now — in flight
 
-- **Truth and hygiene pass.** Correct the stale claims in PHILOSOPHY, this file, and the two bus/runtime design docs. Re-scope warren-937e. Delete dead code per rule 8: `mergePullRequest`, the pause machinery, `closeSeedId`. Generalize the finalize holdouts (`commit?: "seeds"[]`, the `FinalizeStage` union) in one contract touch. Emit `run_started`, and emit or mark `event_emitted` as reserved.
-- **Self-host hardening batch** `[plan: pl-1c02]`. Forward `baseBranch` on the local runtime — the silent wrong-base bug. Durability triage: salvage-before-destroy for `finalize_failed` (warren-cd3b), fetch-before-carve (warren-b94b), a tracker-integrity gate (warren-a71f part 1). A functional bwrap probe and a sandbox failure reason. The release-pipeline half — the docker-build CI gate, draft-until-image release ordering, the multi-arch image — shipped in v0.13.0.
+- **Hygiene residue** — what remains of the v0.13.1 truth-and-hygiene pass. Re-scope warren-937e, whose text still names retired canopy tiers. Delete `closeSeedId` per rule 8 if it is in fact dead. Generalize the finalize holdouts (`commit?: "seeds"[]`, the `FinalizeStage` union) in one contract touch.
+- **Self-host hardening residue** `[plan: pl-1c02, outcome: success]`. Two durability items stay open after the batch shipped in v0.13.0–v0.13.1: fetch-before-carve (warren-b94b) and the tracker-integrity gate (warren-a71f part 1).
 - **Agent-facing CLI + npm publish** `[plan: not yet filed]`. Step 5 of that plan is also `AgentRuntimeAdapter` phase 1 item 10: one event-envelope extractor in `src/core`, three consumers. The docker-build CI gate shipped in v0.13.0, so the npm publish step no longer inherits the release-before-artifact failure.
-- **Seam precursors.** Rate-limit classification in `pr-checks.ts`. Redaction entries for `LINEAR_API_KEY` and `GH_TOKEN`. `DOMAIN_STEMS` gains `seed` and `project`. `hasSeeds` directory probes become capability flags (rule 7).
 
 ## Next — planned, in order
 
@@ -76,6 +75,9 @@ Honest replacements for old sequencing steps with no payer. Each entry names its
 | Tier-1 lifecycle bus, healer + seed-close consumers | v0.13.0 | `docs/design/tier1-observation-bus.md` |
 | Per-run scoped run tokens — sandboxes drop the operator token | v0.13.0 | warren-57fd, [CHANGELOG.md](CHANGELOG.md) |
 | Release-pipeline integrity — PR image-build gate, draft-until-image ordering, multi-arch image | v0.13.0 | [CHANGELOG.md](CHANGELOG.md) |
+| Truth-and-hygiene pass — doc truth pass, rule-8 deletions, full lifecycle-bus emit coverage | v0.13.1 | warren-ab7a, warren-801e, warren-28ca |
+| Self-host hardening — local `baseBranch` forward, salvage-before-destroy, functional bwrap probe | v0.13.1 | pl-1c02 |
+| Seam precursors — capability flags, `rate_limited` class, wider wire stems, scrubber redaction | v0.13.1 | warren-9bbc |
 
 ## Deliberately not in core
 
@@ -102,8 +104,8 @@ Honest tombstones. A removed feature can return as an extension when someone wan
 | Canopy — the library tier and the project tier | v0.13.0 | No users. Built-in agents ship inline (warren-a781 moved the Audit Warden agents first). |
 | Multi-worker burrow model and remote workers (old R-12) | v0.10.0 | Superseded by the `k8s` runtime provider. SPEC §5.4 carries the RETIRED banner. |
 | Fly.io deploy path | v0.10.0 | Superseded by the container image plus GKE. See `docs/RUNBOOK-K8S.md`. |
-| Pause machinery (`markPaused`, `question_posed` remnants) | pending (Now) | Dead since the plot deletion. No non-test caller. |
-| `mergePullRequest` | pending (Now) | Built for the deleted Plot PR surface. No production caller. |
+| Pause machinery (`markPaused`, `question_posed` remnants) | v0.13.1 | Dead since the plot deletion. No non-test caller. |
+| `mergePullRequest` | v0.13.1 | Built for the deleted Plot PR surface. No production caller. |
 
 ## Under evaluation
 
