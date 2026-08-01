@@ -20,9 +20,10 @@
 		"noUncheckedSideEffectImports": true,
 		"noUncheckedIndexedAccess": true,
 
-		"baseUrl": ".",
+		// TS 7 removed `baseUrl`; `paths` resolve relative to this file, so the
+		// mapping must be explicitly relative.
 		"paths": {
-			"@/*": ["src/*"]
+			"@/*": ["./src/*"]
 		},
 		"skipLibCheck": true,
 		"types": []
