@@ -103,6 +103,27 @@ describe("scrubSecrets — fixture corpus (warren-1cb7)", () => {
 		expect(scrubbed.payload.idleMs).toBe(42);
 	});
 
+	test("censors the salvage bundle path on the key alone (warren-7c1e)", () => {
+		// `salvagePath` is a REDACTED_RUN_FIELDS member; the salvage events
+		// published the identical absolute host path as `bundlePath`.
+		const payload = {
+			kind: "reap.workspace_salvaged",
+			payload: {
+				trigger: "push_failed",
+				rescueRef: "warren/rescue/run_abc123",
+				bundlePath: "/data/salvage/run_abc123.bundle",
+				salvagePath: "/data/salvage/run_abc123.bundle",
+			},
+		};
+		const scrubbed = scrubSecrets(payload, null) as typeof payload;
+		expect(scrubbed.payload.bundlePath).toBe(REDACTED_MARKER);
+		expect(scrubbed.payload.salvagePath).toBe(REDACTED_MARKER);
+		// The rescue ref is a branch name carrying the already-public run id —
+		// `PUBLIC_RUN_FIELDS` admits it as `salvageRef`, so it stays in the clear.
+		expect(scrubbed.payload.rescueRef).toBe("warren/rescue/run_abc123");
+		expect(scrubbed.payload.trigger).toBe("push_failed");
+	});
+
 	test("walks arrays and nested objects", () => {
 		const scrubbed = scrubSecrets(
 			{ content: [{ text: "AKIAIOSFODNN7EXAMPLE" }, { deep: { text: "AKIAIOSFODNN7EXAMPLE" } }] },
@@ -195,6 +216,38 @@ describe("projectEvent (warren-1cb7)", () => {
 		expect(JSON.stringify(projected)).not.toContain("run-run_xh5pk5jgep8a");
 		expect(projected?.payloadJson.archived).toBe(false);
 		expect(projectEvent(reap, undefined)).toBe(reap);
+	});
+
+	test("salvage events keep the fact but censor the host bundle path (warren-7c1e)", () => {
+		for (const kind of ["reap.workspace_salvaged", "reap.workspace_salvage_recorded"]) {
+			const ev = {
+				kind,
+				payloadJson: { rescueRef: null, bundlePath: "/data/salvage/run_xh5pk5jgep8a.bundle" },
+			};
+			const projected = projectEvent(ev, ANONYMOUS_ACTOR);
+			expect(projected).not.toBeNull();
+			expect(JSON.stringify(projected)).not.toContain("/data/salvage");
+			// The operator stream still gets the row by reference, untouched.
+			expect(projectEvent(ev, undefined)).toBe(ev);
+		}
+	});
+
+	test("reap.workspace_salvage_failed keeps the kind but redacts raw git stderr (warren-7c1e)", () => {
+		const ev = {
+			kind: "reap.workspace_salvage_failed",
+			payloadJson: {
+				errors: [
+					"rescue push to warren/rescue/run_x failed: remote rejected",
+					"bundle capture (main..HEAD) failed: git bundle create /data/salvage/run_x.bundle",
+				],
+			},
+		};
+		const projected = projectEvent(ev, ANONYMOUS_ACTOR);
+		expect(projected).not.toBeNull();
+		expect(JSON.stringify(projected)).not.toContain("/data/salvage");
+		// Element-wise, so the COUNT of distinct failures survives the redaction.
+		expect(projected?.payloadJson.errors).toEqual([REDACTED_MARKER, REDACTED_MARKER]);
+		expect(projectEvent(ev, undefined)).toBe(ev);
 	});
 
 	test("reap_failed keeps step but drops path and redacts stderr message (warren-cbd8)", () => {

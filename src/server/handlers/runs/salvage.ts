@@ -28,10 +28,9 @@
  */
 
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { ValidationError } from "../../../core/errors.ts";
 import { parseSalvageEnvelope, type SalvageEnvelope } from "../../../runtime/k8s/finalize-wire.ts";
-import { MAX_SALVAGE_BUNDLE_BYTES, salvageBundleFileName } from "../../../runtime/salvage.ts";
+import { MAX_SALVAGE_BUNDLE_BYTES, salvageBundlePath } from "../../../runtime/salvage.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteContext, RouteHandler, ServerDeps } from "../../types.ts";
 import { readJsonBody, requireParam } from "../index.ts";
@@ -64,15 +63,23 @@ function decodeBundle(bundleBase64: string | null): Uint8Array | null {
 	return bytes;
 }
 
-/** Store the bundle durably (atomic tmp+rename); null when none was sent. */
+/**
+ * Store the bundle durably (atomic tmp+rename); null when none was sent.
+ *
+ * `salvageBundlePath` — not a bare `join` — resolves the target, because
+ * `runId` is a percent-decoded route param (warren-7c1e). It throws a
+ * `ValidationError` (→ 400) for anything that would land outside
+ * `salvageDir`, and it throws BEFORE the `mkdir`, so a refused id creates
+ * nothing on disk.
+ */
 async function storeBundle(
 	salvageDir: string,
 	runId: string,
 	bundleBytes: Uint8Array | null,
 ): Promise<string | null> {
 	if (bundleBytes === null) return null;
+	const bundlePath = salvageBundlePath(salvageDir, runId);
 	await mkdir(salvageDir, { recursive: true });
-	const bundlePath = join(salvageDir, salvageBundleFileName(runId));
 	const tmpPath = `${bundlePath}.tmp-${crypto.randomUUID()}`;
 	await writeFile(tmpPath, bundleBytes);
 	await rename(tmpPath, bundlePath);

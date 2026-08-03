@@ -96,16 +96,25 @@ export const INTERNAL_EVENT_KINDS: ReadonlySet<string> = new Set([
  * (a closed `ReapStep` vocabulary) survives, `message` is replaced with
  * the marker, `path` is stripped whole. The full text stays where it
  * belongs — the operator stream, which gets the row by reference.
+ *
+ * `reap.workspace_salvage_failed` (warren-cd3b) joins them in warren-7c1e:
+ * its whole payload is `errors[]`, raw git stderr from the rescue push and
+ * the bundle capture, which quotes the absolute `<salvageDir>/<runId>.bundle`
+ * target. "The salvage failed" is the spectator-visible fact and the kind
+ * alone carries it; the stderr is operator-only.
  */
 export const RAW_FAILURE_EVENT_KINDS: ReadonlySet<string> = new Set([
 	"reap_failed",
 	"spawn_failed",
+	"reap.workspace_salvage_failed",
 ]);
 
 /**
  * The body half of the body/log split for {@link RAW_FAILURE_EVENT_KINDS}:
  * keep every field except `path` (stripped — no marker, the field existing
- * at all is operator-only shape) and `message` (replaced with the marker).
+ * at all is operator-only shape) and the free-text carriers `message` and
+ * `errors[]` (replaced with the marker, element-wise for the array so the
+ * count of distinct failures survives).
  */
 function sanitizeFailurePayload(payload: unknown): unknown {
 	if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
@@ -114,7 +123,15 @@ function sanitizeFailurePayload(payload: unknown): unknown {
 	const out: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
 		if (key === "path") continue;
-		out[key] = key === "message" ? REDACTED_MARKER : value;
+		if (key === "message") {
+			out[key] = REDACTED_MARKER;
+			continue;
+		}
+		if (key === "errors" && Array.isArray(value)) {
+			out[key] = value.map(() => REDACTED_MARKER);
+			continue;
+		}
+		out[key] = value;
 	}
 	return out;
 }
@@ -136,12 +153,25 @@ function sanitizeFailurePayload(payload: unknown): unknown {
  * handle off the public stream wherever a payload carries it, without
  * dropping the event — the rest of the payload (`archived`, timestamps)
  * is spectator-visible fact.
+ *
+ * `bundlePath` / `salvagePath` are the third instance of that same pattern
+ * (warren-7c1e). `salvagePath` is a `REDACTED_RUN_FIELDS` member — an
+ * absolute host filesystem path, the same class as `localPath` — yet three
+ * salvage events (`reap.workspace_salvaged`,
+ * `reap.workspace_salvage_recorded`, and the intake's own emit) published
+ * the identical value to spectators under the name `bundlePath`. A field
+ * the run row withholds means nothing while the transcript hands it back.
+ * `rescueRef` deliberately stays in the clear: it is a branch name on the
+ * project's origin carrying only the already-public run id, and
+ * `PUBLIC_RUN_FIELDS` admits it as `salvageRef` for exactly that reason.
  */
 const SECRET_FIELD_SET = new Set<string>([
 	...SECRET_FIELDS.map((f) => f.toLowerCase()),
 	"x-api-key",
 	"burrowid",
 	"burrowrunid",
+	"bundlepath",
+	"salvagepath",
 ]);
 
 /**

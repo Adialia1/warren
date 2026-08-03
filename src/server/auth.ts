@@ -94,9 +94,10 @@ const ALLOW_ANONYMOUS: AuthOk = Object.freeze({ ok: true, actor: ANONYMOUS_ACTOR
 
 /**
  * A run-scoped callback token holds `readOperator` + `dispatch` so it clears
- * the capability gate on its three callback routes (`GET .../inbox` +
- * `.../finalize-intent` are `readOperator`, `POST .../finalize-result` is
- * `dispatch`). This does NOT let it read arbitrary operator surfaces: the
+ * the capability gate on its four callback routes (`GET .../inbox` +
+ * `.../finalize-intent` are `readOperator`, `POST .../finalize-result` and
+ * `POST .../salvage` are `dispatch`). This does NOT let it read arbitrary
+ * operator surfaces: the
  * request gate additionally pins a `run` actor to `RUN_CALLBACK_ROUTE_PATTERNS`
  * for its OWN run id and refuses once that run is terminal (warren-57fd). The
  * narrow route+id+liveness rule is the real boundary; these flags only let the

@@ -23,6 +23,38 @@ Releases **0.9.10 and earlier** live in
   Warren's own in-pod emitter stamps the marker, so legitimate
   claude-code `result` / pi `agent_end` envelopes are unaffected
   (warren-6646).
+- **Route params can no longer traverse out of a directory**
+  (warren-7c1e). `matchRoute` percent-decodes every `:param`, but the
+  `([^/]+)` capture constrains only the raw pathname and `URL.pathname`
+  preserves `%2F` — so `POST /runs/..%2F..%2Fetc%2Fpwn/salvage` decoded
+  to `../../etc/pwn`, which the salvage intake joined straight onto the
+  salvage directory. Any bearer holding `dispatch` could write up to
+  32 MiB of its own bytes to an arbitrary path. The router now refuses a
+  param that decodes to a path separator or a NUL, and a new
+  `salvageBundlePath` resolver re-checks containment at the sink.
+- **A malformed percent-escape no longer crashes the request pipeline**
+  (warren-7c1e). `/runs/%ZZ/cancel` raised `URIError` out of
+  `matchRoute`, which `handleRequest` calls outside its try/catch, so
+  the connection dropped instead of returning warren's error envelope.
+  Such a path is now a plain 404.
+- **Salvage events no longer publish the host bundle path to spectators**
+  (warren-7c1e). `salvagePath` is a `REDACTED_RUN_FIELDS` member, but
+  `reap.workspace_salvaged` and `reap.workspace_salvage_recorded` served
+  the identical absolute path to anonymous readers as `bundlePath`, and
+  `reap.workspace_salvage_failed` carried it again inside raw git stderr.
+  `bundlePath` / `salvagePath` now censor on the key, and the
+  salvage-failed payload joins the body/log split. `rescueRef` stays in
+  the clear — it is a branch name holding the already-public run id.
+
+### Fixed
+
+- **In-pod salvage reaches the control plane again** (warren-7c1e).
+  `POST /runs/:id/salvage` was missing from
+  `RUN_CALLBACK_ROUTE_PATTERNS`, so the run-scoped token every pod
+  carries (warren-57fd) was refused 403 on the one route that banks a
+  run's otherwise-unrecoverable commits before the `emptyDir` dies. The
+  route now sits in the allowlist, still pinned to its own run id and
+  still refused once that run is terminal.
 
 ## [0.13.1] — 2026-07-31
 

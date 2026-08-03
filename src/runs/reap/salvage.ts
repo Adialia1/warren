@@ -24,8 +24,7 @@
  * operator-visible instead of silent.
  */
 
-import { join } from "node:path";
-import { rescueBranchFor, salvageBundleFileName } from "../../runtime/salvage.ts";
+import { rescueBranchFor, salvageBundlePath } from "../../runtime/salvage.ts";
 import type { ReapExec, ReapFs } from "./types.ts";
 
 export interface WorkspaceSalvageInput {
@@ -79,8 +78,12 @@ export async function salvageWorkspace(
 	if (rescueRef === null && input.salvageDir !== undefined) {
 		const range =
 			input.baseBranch !== null && input.baseBranch !== "" ? `${input.baseBranch}..HEAD` : "HEAD";
-		const target = join(input.salvageDir, salvageBundleFileName(input.runId));
 		try {
+			// Shared resolver, not a bare join (warren-7c1e): this run id comes
+			// off a db row rather than a route param, but the containment check
+			// belongs to the sink so every salvage writer inherits it. Inside the
+			// try because this function reports through `errors` and never throws.
+			const target = salvageBundlePath(input.salvageDir, input.runId);
 			await input.fs.mkdirp(input.salvageDir);
 			await input.exec.run("git", ["bundle", "create", target, range], {
 				cwd: input.workspacePath,

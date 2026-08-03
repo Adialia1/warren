@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,12 +46,16 @@ describe("POST /runs/:id/salvage (warren-cd3b)", () => {
 	let db: WarrenDb;
 	let repos: Repos;
 	let handle: ServeHandle | null = null;
+	let salvageRoot: string;
 	let salvageDir: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
-		salvageDir = await mkdtemp(join(tmpdir(), "warren-salvage-test-"));
+		// Nested one level deep so a traversal escape lands INSIDE the tree the
+		// test owns and cleans up, rather than in the real tmpdir.
+		salvageRoot = await mkdtemp(join(tmpdir(), "warren-salvage-test-"));
+		salvageDir = join(salvageRoot, "salvage");
 	});
 
 	afterEach(async () => {
@@ -59,7 +64,7 @@ describe("POST /runs/:id/salvage (warren-cd3b)", () => {
 			handle = null;
 		}
 		await db.close();
-		await rm(salvageDir, { recursive: true, force: true });
+		await rm(salvageRoot, { recursive: true, force: true });
 	});
 
 	async function serveWith(opts: { salvageDir?: string } = {}): Promise<string> {
@@ -188,6 +193,38 @@ describe("POST /runs/:id/salvage (warren-cd3b)", () => {
 		expect(res.status).toBe(200);
 		const stored = await readFile(join(salvageDir, "run_ghost.bundle"));
 		expect(stored.toString()).toBe("fake-bundle-bytes");
+	});
+
+	/**
+	 * warren-7c1e: `:id` is percent-decoded by the router, so
+	 * `/runs/..%2F..%2Fpwn/salvage` used to decode to `../../pwn` and write the
+	 * caller's bytes wherever that landed. End-to-end because the defect lived
+	 * in the seam between the router's decode and the handler's `join`.
+	 */
+	test("a traversal run id neither matches a route nor writes outside the salvage dir", async () => {
+		await createRun();
+		const base = await serveWith({ salvageDir });
+		const escapeTarget = join(salvageDir, "..", "pwned.bundle");
+		const res = await fetch(`${base}/runs/..%2Fpwned/salvage`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(envelope()),
+		});
+		expect(res.status).toBe(404);
+		expect(existsSync(escapeTarget)).toBe(false);
+	});
+
+	test("a malformed percent-escape in :id is a 404, not an unhandled URIError", async () => {
+		await createRun();
+		const base = await serveWith({ salvageDir });
+		const res = await fetch(`${base}/runs/%ZZ/salvage`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(envelope()),
+		});
+		expect(res.status).toBe(404);
+		// The canonical warren envelope, not Bun's default 500 page.
+		expect(res.headers.get("content-type")).toContain("application/json");
 	});
 
 	test("an unconfigured intake fails LOUD (never silently drops the only copy)", async () => {

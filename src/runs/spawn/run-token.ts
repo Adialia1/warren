@@ -12,8 +12,9 @@
  * The fix mints a credential bound to a SINGLE run at dispatch time and injects
  * THAT instead. A run-scoped token authorizes only the run's own callback
  * surface — `GET /runs/:thisId/inbox`, `GET /runs/:thisId/finalize-intent`,
- * `POST /runs/:thisId/finalize-result` (`RUN_CALLBACK_ROUTE_PATTERNS`) — and
- * nothing else, and only for its own run id. Its lifetime is bounded by the
+ * `POST /runs/:thisId/finalize-result`, `POST /runs/:thisId/salvage`
+ * (`RUN_CALLBACK_ROUTE_PATTERNS`) — and nothing else, and only for its own
+ * run id. Its lifetime is bounded by the
  * run: the server's request gate rejects it once the run reaches a terminal
  * state (see `src/server/server.ts`).
  *
@@ -94,15 +95,26 @@ function constantTimeEqual(a: string, b: string): boolean {
 
 /**
  * The ONLY routes a run-scoped credential may reach — a run's own callback
- * surface (the in-pod steering poll and the two finalize legs). The request
- * gate additionally pins the `:id` param to the token's bound run id and
- * refuses once that run is terminal, so this set is necessary but not
- * sufficient on its own.
+ * surface (the in-pod steering poll, the two finalize legs, and the salvage
+ * intake). The request gate additionally pins the `:id` param to the token's
+ * bound run id and refuses once that run is terminal, so this set is
+ * necessary but not sufficient on its own.
+ *
+ * `/runs/:id/salvage` (warren-cd3b) was missing here until warren-7c1e. Its
+ * only caller is `finalize-entrypoint.ts`, which posts with the pod's
+ * run-scoped `WARREN_API_TOKEN` — so every in-pod salvage POST was refused
+ * 403 by this gate and the pod's last recoverable copy of the run's commits
+ * died with the `emptyDir`. The route's own doc comment already asserted the
+ * pod "carries its per-run scoped callback token"; the allowlist simply was
+ * not updated alongside it. Admitting it here keeps the narrow rule intact —
+ * a run token still reaches only its OWN run's salvage, and only while that
+ * run is live.
  */
 export const RUN_CALLBACK_ROUTE_PATTERNS: ReadonlySet<string> = new Set([
 	"/runs/:id/inbox",
 	"/runs/:id/finalize-intent",
 	"/runs/:id/finalize-result",
+	"/runs/:id/salvage",
 ]);
 
 /** True iff `pattern` is one of the run-callback routes a run token may reach. */
