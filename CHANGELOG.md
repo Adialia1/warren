@@ -10,6 +10,77 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-08-04
+
+The agent-facing CLI release (plan pl-882c). The CLI becomes the
+primary agent surface — scriptable, pollable, and self-priming the way
+`sd prime` / `ml prime` are — and `@os-eco/warren-cli` publishes to
+npm.
+
+### Added
+
+- **`@os-eco/warren-cli` installs from npm** (warren-58dd). `npm i -g
+  @os-eco/warren-cli` on Bun v1.1+ — the package ships raw bun-shebang
+  TypeScript with a `files` allowlist (`src/`, UI source excluded), an
+  `exports` map so `import { WarrenClient } from
+  "@os-eco/warren-cli/client"` resolves, and `publishConfig.access:
+  public`. The release workflow gains an idempotent `publish` job
+  ordered draft release → ghcr image → npm publish → promote, so an
+  npm version can never exist without its matching container image.
+  Supersedes the container-only distribution decision (mx-834a3a).
+- **`warren show`, `warren wait`, `warren tail`, `warren cancel`**
+  (warren-b048) — the poll/follow/steer command set agents drive a run
+  with: point-in-time state, block-until-terminal with `--timeout`
+  (default 1800s), event streaming that follows by default
+  (`--no-follow` drains and exits, `--from-seq` replays), and
+  idempotent cancellation with an optional `--reason`.
+- **`warren login` and `warren prime`** (warren-fc12) — agent session
+  bootstrap. `login` verifies the credential against `/whoami` and
+  writes base URL + token to `~/.warren/client.json` (mode 0600, never
+  a DB credential per D5). `prime` emits the session context document:
+  command reference derived from the program definition, env contract,
+  exit-code table, and workflows.
+- **Agent-facing output contract** (warren-b61e) — global `--output
+  ndjson|json|pretty` (ndjson default, machines first), a stable
+  exit-code table, and D6 duration rendering. Every command emits
+  machine-parseable output.
+- **SDK completion** (warren-968c) — `WarrenClient` gains `cancelRun`
+  and a server version probe, and re-exports the core envelope types.
+- **Generated CLI reference** (warren-1caf) — `docs/cli-reference.md`
+  derives from the commander program definition (`bun run
+  gen:cli-ref`); `gen:cli-ref:check` rides the lint gate so it cannot
+  drift.
+
+### Changed
+
+- **The CLI collapses onto HTTP** (warren-97a2, decision D3). `warren
+  run` and `warren add-project` now call the HTTP API instead of
+  touching the DB, so the CLI works against a remote instance with
+  nothing but a URL and a token. Resolution precedence everywhere:
+  flags > env > config file > built-in default (D5).
+- **One event-envelope extractor in `src/core`** (warren-27b5).
+  Terminal-detect, usage-aggregate, and provider-error all consume the
+  same parser instead of three hand-rolled ones.
+- **Typed usage readers over the core extractor** (warren-db2e) —
+  `usageShape` replaces ad-hoc `Record` digging; the pi-wins tiebreak
+  is preserved.
+- **HTTP response envelopes live in `src/core/wire.ts`** (warren-42f1)
+  and `check:wire-types` grows `project` and `seed` domain stems, so
+  SDK/UI copies of those shapes now fail lint.
+- **Plan-run orchestration moved into the `src/plan-runs` domain**
+  (warren-e240); the HTTP handler is now a thin surface, per the
+  single-source-of-truth rule.
+- **Acceptance harness adopts SDK `waitForRun`** (warren-bb51) —
+  scenario polling loops replaced; at most one raw sleep remains.
+- **Single-source truth sweep** (warren-00df) — dead `/agents/refresh`
+  caller removed, UI `readFrontmatter` call sites collapsed, false
+  dups-allowlist why-strings corrected.
+
+### Fixed
+
+- **`GET /projects/:id` is registered** (warren-2a89), so SDK
+  `getProject` resolves instead of 404ing.
+
 ## [0.13.2] — 2026-08-03
 
 ### Security

@@ -5,9 +5,14 @@ import { join } from "node:path";
 import { DEFAULT_WARREN_BASE_URL } from "../client/index.ts";
 import { resolveWarrenClient } from "./client.ts";
 
+// Point the config-file slot at a path that cannot exist, so a real
+// `~/.warren/client.json` on the dev machine (written by `warren login`)
+// never leaks into tests that exercise the built-in default.
+const NO_CONFIG_FILE = { WARREN_CLIENT_CONFIG: join(tmpdir(), "warren-client-test-absent.json") };
+
 describe("resolveWarrenClient", () => {
 	test("falls back to the built-in default with no env and no flags", () => {
-		const client = resolveWarrenClient({});
+		const client = resolveWarrenClient(NO_CONFIG_FILE);
 		expect(client.config.baseUrl).toBe(DEFAULT_WARREN_BASE_URL);
 		expect(client.config.token).toBeUndefined();
 	});
@@ -69,7 +74,7 @@ describe("resolveWarrenClient", () => {
 	});
 
 	test("a flag-only token still pairs with the default URL", () => {
-		const client = resolveWarrenClient({}, { token: "tok-flag" });
+		const client = resolveWarrenClient(NO_CONFIG_FILE, { token: "tok-flag" });
 		expect(client.config.baseUrl).toBe(DEFAULT_WARREN_BASE_URL);
 		expect(client.config.token).toBe("tok-flag");
 	});
