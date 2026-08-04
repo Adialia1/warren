@@ -262,6 +262,78 @@
       ]
     },
     {
+      "name": "show",
+      "description": "render a run's detail (GET /runs/:id; json mode is the raw run document)",
+      "options": [
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "wait",
+      "description": "poll a run to its terminal state (SDK waitForRun; exit 0 on succeeded)",
+      "options": [
+        {
+          "flags": "--timeout <seconds>",
+          "description": "overall wait budget in seconds (default 1800)"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "tail",
+      "description": "stream a run's events (GET /runs/:id/events; SIGINT detaches, exit 130)",
+      "options": [
+        {
+          "flags": "--no-follow",
+          "description": "drain the current backlog and exit instead of following"
+        },
+        {
+          "flags": "--from-seq <n>",
+          "description": "replay only events after this seq"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "cancel",
+      "description": "cancel a non-terminal run (POST /runs/:id/cancel; idempotent)",
+      "options": [
+        {
+          "flags": "--reason <text>",
+          "description": "operator note recorded on the cancel"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
       "name": "login",
       "description": "verify a base URL + token against the server and persist them to the client config",
       "options": [

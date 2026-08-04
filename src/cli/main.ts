@@ -48,6 +48,7 @@ import {
 	parseOutputMode,
 } from "./output.ts";
 import type { PlanRunOutput } from "./plan-run-renderer.ts";
+import { registerRunCommands } from "./register-run-commands.ts";
 
 export function buildProgram(baseContext: CliContext): Command {
 	const program = new Command();
@@ -409,6 +410,9 @@ export function buildProgram(baseContext: CliContext): Command {
 		);
 		process.exit(result.exitCode);
 	});
+
+	// Agent-facing run read/control commands (warren-b048).
+	registerRunCommands(program, context);
 
 	// Session bootstrap pair (warren-fc12, pl-882c step 11): `login` stores
 	// base URL + token in the client config (D5); `prime` emits the agent
