@@ -50,7 +50,7 @@ and documenting exactly *how* clunky is a deliverable of the flagship
 build. The in-process bus (`warren-ext/v1`) is the semantic model an
 eventual out-of-process delivery mechanism will mirror.
 
-### Providers (direction only — not yet committed)
+### Providers (committed 2026-08-04 — trackers first)
 
 A provider implements a warren-defined contract that warren *calls*
 and waits on: fetch an issue, close an issue, open a PR. Today every
@@ -58,21 +58,27 @@ provider seam (`RuntimeProvider`, `AuthProvider`, the planned `Forge`
 and `IssueTracker`) is an in-process TypeScript implementation
 selected at boot.
 
-The direction under evaluation: let providers live out-of-process too,
-behind a **bridge implementation** — one in-core adapter per seam that
-speaks a versioned wire protocol (for example `warren-tracker/v1`) to
-an external container. The seam keeps its TypeScript contract and its
+The committed direction (ROADMAP "Decisions already made",
+2026-08-04): providers live out-of-process too, behind a **bridge
+implementation** — one in-core adapter per seam that speaks a
+versioned wire protocol (`warren-tracker/v1` first) to an external
+container. The seam keeps its TypeScript contract and its
 two-implementation rule; the bridge is simply one of the
 implementations, and every external provider walks through it. Prior
 art: Concourse resource types, Drone/Woodpecker plugins.
 
-This kind is **not committed**. It would amend ROADMAP Next item 3
-(Linear moves from in-core implementation #2 to first external tracker
-extension), and that amendment is an owner decision that has not been
-recorded. A wire protocol is a far heavier promise than a TypeScript
+Scope of the commitment: trackers only, sequenced after the Forge
+campaign per ROADMAP Next item 3. Seeds stays in-core as
+implementation #1; `RemoteTracker` is implementation #2 and the last
+tracker core adds; Linear ships as the first external tracker
+extension, with Jira, GitLab, and GitHub Issues on the same path.
+Extensions hold their own tracker credentials — warren never stores
+them. A wire protocol is a far heavier promise than a TypeScript
 interface — PHILOSOPHY rule 6 names API churn as the ecosystem-killer
-— so no provider wire contract stabilizes before at least two real
-external implementations exist against it.
+— so the contract stays experimental until a genuinely foreign
+implementation survives it unchanged, proven by a published
+conformance suite rather than a grep. Forges are explicitly **not**
+part of this commitment (see §5).
 
 ## 2. The flagship observer: the audit log (pl-116e)
 
@@ -159,9 +165,10 @@ day the first entry does.
 - **Admin-action hooks** — project added/deleted, agent edits, auth
   events are not on the bus; add them when the first consumer needs
   them (the audit log's reserved list is the queue).
-- **Provider wire protocols** — the §1 bridge direction, gated on an
-  owner decision and a roadmap amendment; trackers (Linear, Jira,
-  GitLab) are the first candidate family.
+- **Provider wire protocols** — committed for trackers (§1,
+  2026-08-04); the `warren-tracker/v1` contract design doc arrives
+  when the seam work starts, after the Forge campaign, and consumes
+  the pl-116e friction report.
 - **Forge extensions** — the same bridge logic applied to forges cuts
   deeper (PR-opening sits directly behind the kernel's push); parked.
 - **Tier-2 mutating hooks** — deferred until paid, unchanged; the
