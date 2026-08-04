@@ -35,7 +35,7 @@ The brake on all three is PHILOSOPHY rule 1: features pay for seams. Work with n
 
 ## Now — in flight
 
-- Nothing in flight. The next pickup is the Forge campaign design doc (Next item 1).
+- **The flagship extension (Next item 6), as plan pl-116e.** The audit-log observer ships out-of-core at `extensions/audit-log/`, with zero audit-specific lines in core. Its friction report becomes the spec for the manifest, the loader, and the delivery mechanism. `docs/design/extensions.md` is the provisional design record. On the seam track, the Forge campaign design doc (Next item 1) stays the next pickup.
 
 ## Next — planned, in order
 
