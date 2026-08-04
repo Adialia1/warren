@@ -5,18 +5,27 @@
  * `proxy/` modules in warren-b902.
  *
  * The proxy is an in-process Bun route, not a separate reverse proxy.
- * `tryHandlePreviewProxy` runs *before* the normal auth gate and route
- * match in `src/server/server.ts`. There are two routing modes, picked
- * at config time from `WARREN_PREVIEW_MODE`:
+ * There are two routing modes, picked at config time from
+ * `WARREN_PREVIEW_MODE`:
  *
- *   - **Subdomain mode** (operator owns a wildcard CNAME + cert):
- *     match `Host: run-<runId>.<previewHost>`. URL forwarded upstream
- *     keeps `url.pathname` verbatim.
+ *   - **Subdomain mode** (operator owns a wildcard CNAME + cert): the
+ *     handler runs as a preamble *before* the normal auth gate and
+ *     route match in `src/server/server.ts` and matches
+ *     `Host: run-<runId>.<previewHost>`. URL forwarded upstream keeps
+ *     `url.pathname` verbatim.
  *
- *   - **Path mode** (default; reuses warren's own host + cert): match
- *     `^/p/<runId>(/<rest>)?$` on the request path. The `/p/<runId>`
- *     prefix is stripped before forwarding so the upstream sees a
- *     request rooted at `<rest>` (or `/` when `rest` is empty).
+ *   - **Path mode** (default; reuses warren's own hostname + cert):
+ *     match `^/p/<runId>(/<rest>)?$` on the request path. The
+ *     `/p/<runId>` prefix is stripped before forwarding so the
+ *     upstream sees a request rooted at `<rest>` (or `/` when `rest`
+ *     is empty). Since warren-3f8a the handler is mounted on a
+ *     DEDICATED listener (`WARREN_PREVIEW_PORT`, default bind port +
+ *     1) so previews get their own browser origin — same-origin
+ *     preview code must not be able to read the operator token out of
+ *     the warren UI's storage. The main listener answers `/p/...` with
+ *     a 308 to the preview origin (`createPreviewPathRedirect`). The
+ *     unix transport keeps the legacy same-origin mounting (no TCP
+ *     port to bind) and warns at boot.
  *
  *     **Referer-based asset routing (warren-63e1):** when the request
  *     path does NOT match `/p/<runId>/...` but the `Referer` header's
@@ -62,7 +71,6 @@ import type { PreviewMode } from "../../warren-config/index.ts";
 import { DEFAULT_DEBOUNCE_MS, forwardToUpstream, maybeFlushLastHit } from "./forward.ts";
 import { previewError, previewUnauthorized } from "./responses.ts";
 import {
-	isWarrenApiPath,
 	PREVIEW_PATH_PREFIX,
 	parsePreviewPathPrefix,
 	parseRunIdFromHost,
@@ -75,6 +83,7 @@ import type { PreviewProxyDeps, PreviewProxyHandler } from "./types.ts";
 // `import ... from "../preview/proxy/index.ts"` (or just
 // `"../preview/proxy"`) keeps working after the split.
 export { DEFAULT_DEBOUNCE_MS } from "./forward.ts";
+export { createPreviewPathRedirect } from "./redirect.ts";
 export { LOGIN_PATH_PREFIX } from "./responses.ts";
 export {
 	HTML_HEAD_LOOKAHEAD_BYTES,
@@ -84,7 +93,6 @@ export {
 	rewriteRootRelativeAttrs,
 } from "./rewrite.ts";
 export {
-	isWarrenApiPath,
 	PREVIEW_PATH_PREFIX,
 	parsePreviewPathPrefix,
 	parseRunIdFromHost,
@@ -131,11 +139,10 @@ export function createPreviewProxyHandler(deps: PreviewProxyDeps): PreviewProxyH
 				runId = parsed.runId;
 				upstreamPath = parsed.rest;
 			} else {
-				// Referer-based asset routing (warren-63e1). Skip when the
-				// path looks like a warren API call so a click from inside a
-				// preview into `/runs/<id>/cancel` (etc.) still reaches the
-				// real handler.
-				if (isWarrenApiPath(url.pathname)) return null;
+				// Referer-based asset routing (warren-63e1). The path-mode
+				// proxy runs on the dedicated preview listener (warren-3f8a),
+				// which serves nothing but previews — every unmatched path is
+				// a candidate sub-resource, so no API carve-out applies.
 				const refererRunId = parseRunIdFromReferer(request.headers.get("referer"));
 				if (refererRunId === null) return null;
 				runId = refererRunId;

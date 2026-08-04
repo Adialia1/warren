@@ -424,7 +424,7 @@ function PreviewCard({ run }: { run: RunRow }) {
 							className="font-mono text-xs"
 							title={
 								mode === "path"
-									? "Path-mode previews ride on the warren host under /p/<run-id>/"
+									? "Path-mode previews ride on the warren hostname under /p/<run-id>/, on their own preview port"
 									: "Subdomain-mode previews ride on run-<id>.<host>"
 							}
 						>

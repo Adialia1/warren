@@ -118,9 +118,31 @@ describe("GET /preview/config (warren-016d)", () => {
 			headers: { authorization: `Bearer ${TOKEN}` },
 		});
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { mode: string; host: string | null };
+		const body = (await res.json()) as { mode: string; host: string | null; port: number | null };
 		expect(body.mode).toBe("path");
 		expect(body.host).toBeNull();
+		// No dedicated preview listener wired in this fixture → null (the UI
+		// then keeps the portless URL shape).
+		expect(body.port).toBeNull();
+	});
+
+	test("returns the dedicated preview listener port in path mode (warren-3f8a)", async () => {
+		const previewAuth = createPreviewAuth(TOKEN, { scope: { mode: "path" }, secure: false });
+		const { deps } = await depsFor(repos, previewAuth, undefined, "path");
+		handle = startServer(
+			{ ...deps, previewPort: 8081 },
+			{
+				transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+				auth: bearerAuth(TOKEN),
+				logger: silentLogger,
+			},
+		);
+		const res = await fetch(`${tcpUrl(handle)}/preview/config`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { mode: string; port: number | null };
+		expect(body.port).toBe(8081);
 	});
 
 	test("401 without a bearer token (gated like every non-login preview surface)", async () => {

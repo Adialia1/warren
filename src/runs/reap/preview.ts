@@ -131,6 +131,8 @@ export interface RunPreviewAnnotateInput {
 export async function runPreviewAnnotate(input: RunPreviewAnnotateInput): Promise<string | null> {
 	const previewHost = input.previewLaunchConfig?.host ?? null;
 	const previewMode = input.previewLaunchConfig?.mode ?? DEFAULT_PREVIEW_MODE;
+	// warren-3f8a: path-mode previews live on the dedicated listener's port.
+	const previewPort = input.previewLaunchConfig?.port ?? null;
 	let previewUrl: string | null = null;
 	try {
 		if (input.previewLaunchState === "live" && previewHost === null) {
@@ -153,13 +155,13 @@ export async function runPreviewAnnotate(input: RunPreviewAnnotateInput): Promis
 				input.previewLaunchState === "live"
 					? {
 							state: "live",
-							url: formatPreviewUrl(input.runId, previewHost as string, previewMode),
+							url: formatPreviewUrl(input.runId, previewHost as string, previewMode, previewPort),
 						}
 					: { state: "failed", failureTail },
 		});
 		if (result.ok) {
 			if (input.previewLaunchState === "live") {
-				previewUrl = formatPreviewUrl(input.runId, previewHost as string, previewMode);
+				previewUrl = formatPreviewUrl(input.runId, previewHost as string, previewMode, previewPort);
 			}
 			await input.emit("preview_annotated", {
 				prUrl: input.prUrl,

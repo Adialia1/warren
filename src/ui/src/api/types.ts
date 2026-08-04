@@ -380,6 +380,13 @@ export type PreviewMode = "path" | "subdomain";
 export interface PreviewConfigResponse {
 	mode: PreviewMode;
 	host: string | null;
+	/**
+	 * Public port of the dedicated path-mode preview listener
+	 * (warren-3f8a): path-mode previews live on their own browser origin
+	 * (same hostname, this port). Null in subdomain mode and on legacy
+	 * same-origin deployments — the URL then keeps the inbound port.
+	 */
+	port: number | null;
 }
 
 /* ----------------------------------------------------------------------- */

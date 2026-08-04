@@ -273,6 +273,17 @@ export interface ServerDeps {
 	 */
 	readonly previewMode?: PreviewMode;
 	/**
+	 * Public port of the dedicated path-mode preview listener
+	 * (warren-3f8a). Path-mode previews live on their own origin — same
+	 * hostname as warren, this port — so the login handshake resolves
+	 * redirects against it and `/preview/config` discloses it to the UI.
+	 * Undefined in subdomain mode, on the unix transport's legacy
+	 * same-origin mounting, and in tests that never boot the listener
+	 * (redirects then resolve against the inbound origin, the pre-split
+	 * behaviour).
+	 */
+	readonly previewPort?: number;
+	/**
 	 * Signed-cookie auth for the preview proxy (R-19 / docs/design/preview-environments.md,
 	 * warren-8a10). Bound at boot from `WARREN_API_TOKEN` (the same
 	 * bearer the rest of warren uses). Undefined when the operator

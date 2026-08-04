@@ -74,13 +74,11 @@ import {
 } from "./logging.ts";
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
 import { bootPlanRunCoordinatorWiring } from "./plan-run-wiring.ts";
-import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
+import { bootPreviewSurface } from "./preview-wiring.ts";
 import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
 
-// Re-export `resolvePgPoolMax` so the strict round-trip check stays
-// accessible from `main.test.ts` (and any other importer that grew
-// before the split).
+// Re-exported so `main.test.ts` keeps its strict round-trip check.
 export { resolvePgPoolMax } from "./utils.ts";
 
 export interface BootServerOptions {
@@ -185,6 +183,16 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const adapter = DrizzleAdapter.for(db);
 	const portAllocator = new PreviewPortAllocator(adapter, previewPortRange);
 	const previewLaunchConfig = loadPreviewLaunchConfigFromEnv(env);
+	// warren-3f8a: path mode on TCP boots a DEDICATED preview listener (own
+	// port → own browser origin); `launchConfig` carries its resolved port.
+	const previewSurface = bootPreviewSurface({
+		token: serverConfig.token,
+		previewLaunchConfig,
+		repos,
+		logger,
+		transport: serverConfig.transport,
+		...(opts.now !== undefined ? { now: opts.now } : {}),
+	});
 	const previewEvictionConfig = loadPreviewEvictionConfigFromEnv(env);
 	const workspaceGcConfig = loadWorkspaceGcConfigFromEnv(env);
 
@@ -259,7 +267,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		autoOpenPr,
 		warrenConfigs,
 		portAllocator,
-		previewLaunchConfig,
+		previewLaunchConfig: previewSurface.launchConfig,
 		seedsCli,
 	});
 	if (bridgesBoot.resumed.length > 0) {
@@ -377,13 +385,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			: "workspace GC worker running",
 	);
 
-	const { previewAuth, previewProxy } = createPreviewAuthAndProxy({
-		token: serverConfig.token,
-		previewLaunchConfig,
-		repos,
-		logger,
-		...(opts.now !== undefined ? { now: opts.now } : {}),
-	});
 	const deps = buildServerDeps({
 		repos,
 		db,
@@ -400,7 +401,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		warrenConfigs,
 		runBranchPrefixDefault,
 		previewPortRange,
-		previewLaunchConfig,
+		previewLaunchConfig: previewSurface.launchConfig,
 		previewEvictionConfig,
 		workspaceGcTtlMs: workspaceGcConfig.ttlMs,
 		// Event-stream concurrency caps (warren-25f6). Parsed here so a bad
@@ -408,7 +409,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		eventStreamLimits: loadEventStreamLimitsFromEnv(),
 		// warren-ce9b: only set under `WARREN_AUTH=public`; gates POST /projects.
 		publicAllowlist,
-		previewAuth,
+		previewAuth: previewSurface.previewAuth,
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		sdBinary: schedulerConfig.sdBinary,
 		metricsRegistry,
@@ -443,12 +444,13 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		return row !== null && !isTerminalRunState(row.state);
 	};
 
+	const mainPreamble = previewSurface.mainPreamble;
 	const handle = startServer(deps, {
 		transport: serverConfig.transport,
 		auth,
 		logger,
 		runActivityCheck,
-		...(previewProxy !== undefined ? { previewProxy } : {}),
+		...(mainPreamble !== undefined ? { previewProxy: mainPreamble } : {}),
 	});
 
 	logger.info({ url: handle.url }, "warren server listening");
@@ -462,6 +464,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			// then drain the scheduler so any in-flight tick finishes calling
 			// spawnRun before bridges/burrow/db disappear under it.
 			await handle.stop();
+			await previewSurface.previewListener?.stop();
 			await planRunCoordinator.stop();
 			await watchdog.stop();
 			await scheduler.stop();

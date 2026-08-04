@@ -295,9 +295,10 @@ export const previewApi = {
  * `formatPreviewUrl` (`src/preview/launch/index.ts`) so the displayed URL
  * matches where the login handshake actually redirects:
  *
- *   - path mode      → `<origin>/p/<runId>/` (origin from `config.host`
- *                       when set, otherwise the current `window.location.origin`
- *                       — previews ride on the warren host itself).
+ *   - path mode      → `<preview-origin>/p/<runId>/`: `config.host` (or the
+ *                       current `window.location.origin`) with `config.port`
+ *                       swapped in — the dedicated preview listener's own
+ *                       origin (warren-3f8a).
  *   - subdomain mode → `https://run-<runId>.<host>/` (host always set in
  *                       this mode; boot rejects subdomain without host).
  */
@@ -307,8 +308,9 @@ export function formatPreviewUrl(
 	origin: string,
 ): string {
 	if (config.mode === "path") {
-		const base = config.host !== null ? `https://${config.host}` : origin;
-		return `${base}/p/${encodeURIComponent(runId)}/`;
+		const base = new URL(config.host !== null ? `https://${config.host}` : origin);
+		if (config.port !== null) base.port = String(config.port);
+		return `${base.origin}/p/${encodeURIComponent(runId)}/`;
 	}
 	const host = config.host ?? "";
 	return `https://run-${encodeURIComponent(runId)}.${host}/`;

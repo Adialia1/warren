@@ -161,6 +161,11 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		streamLimiter: new EventStreamLimiter(eventStreamLimits),
 		...(publicAllowlist !== undefined ? { publicAllowlist } : {}),
 		previewMode: previewLaunchConfig.mode,
+		// warren-3f8a: the dedicated preview listener's resolved public port
+		// (path mode on TCP); the orchestrator resolved it into launchConfig.
+		...(previewLaunchConfig.mode === "path" && previewLaunchConfig.port !== null
+			? { previewPort: previewLaunchConfig.port }
+			: {}),
 		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
 		...(previewAuth !== undefined ? { previewAuth } : {}),
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),

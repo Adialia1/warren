@@ -327,7 +327,7 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
 			openPr: pr.openPr,
 			previewConfig: SERVER_PREVIEW,
-			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain" },
+			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
 			annotatePrPreview: annotate.annotate,
@@ -360,17 +360,18 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
 			openPr: pr.openPr,
 			previewConfig: SERVER_PREVIEW,
-			previewLaunchConfig: { host: "warren.example.com", mode: "path" },
+			previewLaunchConfig: { host: "warren.example.com", mode: "path", port: 8081 },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
 			annotatePrPreview: annotate.annotate,
 		});
 		expect(annotate.calls).toHaveLength(1);
+		// warren-3f8a: path-mode previews live on the dedicated listener's port.
 		expect(annotate.calls[0]?.preview).toEqual({
 			state: "live",
-			url: `https://warren.example.com/p/${ctx.runId}/`,
+			url: `https://warren.example.com:8081/p/${ctx.runId}/`,
 		});
-		expect(result.previewUrl).toBe(`https://warren.example.com/p/${ctx.runId}/`);
+		expect(result.previewUrl).toBe(`https://warren.example.com:8081/p/${ctx.runId}/`);
 	});
 
 	test("pr_annotate_preview is skipped when no PR was opened", async () => {
@@ -385,7 +386,7 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			fs: fakeFs().fs,
 			exec: e.exec,
 			previewConfig: SERVER_PREVIEW,
-			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain" },
+			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
 			annotatePrPreview: annotate.annotate,
@@ -408,7 +409,7 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
 			openPr: pr.openPr,
 			previewConfig: SERVER_PREVIEW,
-			previewLaunchConfig: { host: null, mode: "subdomain" },
+			previewLaunchConfig: { host: null, mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
 			annotatePrPreview: annotate.annotate,
@@ -447,7 +448,7 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
 			openPr: pr.openPr,
 			previewConfig: SERVER_PREVIEW,
-			previewLaunchConfig: { host: null, mode: "subdomain" },
+			previewLaunchConfig: { host: null, mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
 			annotatePrPreview: annotate.annotate,
@@ -475,7 +476,7 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
 			openPr: pr.openPr,
 			previewConfig: SERVER_PREVIEW,
-			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain" },
+			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
 			annotatePrPreview: annotate.annotate,
