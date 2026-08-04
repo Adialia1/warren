@@ -10,6 +10,8 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.13.2] — 2026-08-03
+
 ### Security
 
 - **Agent output can no longer terminalize its own run** — stream
@@ -45,6 +47,75 @@ Releases **0.9.10 and earlier** live in
   `bundlePath` / `salvagePath` now censor on the key, and the
   salvage-failed payload joins the body/log split. `rescueRef` stays in
   the clear — it is a branch name holding the already-public run id.
+- **Path-mode previews move to a dedicated origin** (warren-3f8a) so
+  agent-authored preview code can no longer read the operator token out
+  of the UI's `localStorage`. A dedicated listener on
+  `WARREN_PREVIEW_PORT` (default bind port + 1) serves nothing but the
+  preview proxy; the warren origin answers `/p/...` with a 308 redirect.
+  The unix-socket transport keeps legacy same-origin mounting and warns
+  at boot. `/preview/config` discloses the preview port so the UI and PR
+  annotations render the real URL.
+- **`targetBranch` on `POST /runs` is now a validated push target**
+  (#754) — a dispatch-capable bearer can no longer aim a run's push at
+  an arbitrary branch such as the project default.
+- **`POST /runs/:id/steer` validates `priority`** against
+  `INBOX_PRIORITIES` instead of casting an arbitrary string past the
+  type (#757), and **agent runtime ids are validated against
+  `KNOWN_RUNTIME_IDS`** so an unknown runtime can no longer slip through
+  agent upsert (#758).
+- **`.warren/config.yaml` fails closed** (#759) — one unknown key used
+  to silently drop the whole config, including the admission caps it
+  carried. Unknown keys now surface instead of erasing their siblings.
+- **Security headers on every response** plus `Vary: Authorization` on
+  projection-dependent routes (#750), and the **per-client event-stream
+  cap no longer trusts client-supplied forwarding headers** for its
+  client key (#751).
+- **Public-projection leak sweep** — `reap_failed` / `spawn_failed`
+  events no longer leak absolute host paths and raw subprocess stderr
+  (#752); `reap.workspace_destroyed` and `watchdog.terminal_reconciled`
+  payloads no longer re-leak `burrowId` / `burrowRunId` (#748, #749);
+  `plan_runs` and `plan_run_children` are now field-projected for
+  spectators instead of served whole (#747); and anonymous
+  `GET /runs/:id/events` no longer materializes the entire run
+  transcript in memory per request (#710). Acceptance scenario 39 grew
+  matching assertions for plan-run fields and path-bearing event kinds
+  (#753).
+
+### Added
+
+- **Seeds integrity guard** for `.seeds/issues.jsonl` (warren-a71f,
+  #716), plus post-merge dedupe that keeps terminal states
+  (warren-b3be, #761).
+- **Alpha logo/icon branding variants** and generator updates
+  (warren-1d14).
+
+### Changed
+
+- **SPEC.md is retired** (warren-6fe3, #720–#741). Its living contracts
+  were salvaged into `docs/design/` records — preview environments,
+  plan-run coordinator, scheduler, warren-config loader,
+  runtime/supervisor/durability, agent composition + pi runtime — and
+  its V1 goals and security posture folded into `ACCEPTANCE.md` and
+  `SECURITY.md`. All code and doc references now point at the design
+  records or `docs/http-api.md`.
+- **`AGENTS.md` is the canonical agent instruction doc**; `CLAUDE.md`
+  is now a symlink to it (warren-b771, #742). A docs dedup/conflict
+  sweep aligned README, ROADMAP, PHILOSOPHY, and CONTRIBUTING (#743).
+- **Cross-repo dispatch is fully removed** — plan-run coordinator and
+  dispatch routing (warren-deed, #721), the dispatch-prompt builder
+  (warren-702e, #724), `seedProjectId` in the spawn path (warren-fd42,
+  #725), the target-project resolver and `extensions.repo` schema key
+  (warren-2967, #727), the cross-repo UI surface (#729), and
+  `execution_project_id` on `plan_run_children` (warren-7c67, #731).
+- **Finalize contract cleanup** — dead `closeSeedId` deleted (#745) and
+  the remaining holdouts generalized (#746).
+- **`src/ui` migrated to TypeScript 7** and the jscpd duplication
+  ratchet tightened from 3% to 1.3% (#744).
+- **K8s repo-cache is opt-in, default off** (warren-554f, #719), and
+  the event bridge drops the remaining per-delta noise events
+  (warren-ef12, #714).
+- **CI action bumps** — docker buildx/build-push/login/qemu and
+  actions/checkout moved to their next majors (#700–#705).
 
 ### Fixed
 
@@ -55,6 +126,30 @@ Releases **0.9.10 and earlier** live in
   run's otherwise-unrecoverable commits before the `emptyDir` dies. The
   route now sits in the allowlist, still pinned to its own run id and
   still refused once that run is terminal.
+- **K8s pod-log follow honesty** — the follow's half-open blind window
+  is bounded (warren-029d, #717) and the pod exits non-zero when the
+  in-pod finalize never delivers (warren-4d6a, #718), closing the
+  warren-3047 silent-discard root cause. `warren run` no longer races
+  burrow finalize under the local runtime either (warren-2909, #713).
+- **Healer routing and retry accounting** — `projectMapping` no longer
+  routes by case-insensitive substring match, so a short project name
+  can't shadow a longer one (#764), and the retry cap is no longer
+  computed over only the 500 most recent `heal.dispatched` events
+  (#762).
+- **Plan-run correctness** — `promptTemplate` must contain `{seed_id}`
+  or the dispatch is refused (warren-b3be, #761); `plan_run_children`
+  and `run_previews` writes now go through transition tables instead of
+  accepting any state jump (#760).
+- **Reap PR seed attribution** no longer takes the first regex hit on
+  the operator prompt (#765), and `writeSeedExtensions` no longer drops
+  the trigger key for five of the eight trigger kinds (#763).
+- **Finalize-wire stage validator** derives from the `FinalizeStage`
+  union instead of hand-listing six of its seven values (#756).
+- **UI**: burrow-labelled surfaces use runtime-neutral copy
+  (warren-0965, #712) and Run analytics behavior sections gate on
+  `readOperator` (warren-bba5, #711).
+- **Analytics window is bounded when `to=` is supplied without `from=`**
+  (warren-30cc, #709).
 
 ## [0.13.1] — 2026-07-31
 
