@@ -19,19 +19,22 @@
 
 # ---------- stage 1: build the UI ----------
 #
-# The build tree mirrors the repo's own layout — `ui/` and `core/` as
-# siblings — because the SPA imports the shared wire vocabulary across
-# that seam: `src/ui/src/api/types.ts` does
-# `from "../../../core/wire.ts"`, and `src/ui/tsconfig.app.json` lists
-# `../core/wire.ts` in its `include` (warren-b229). A flat WORKDIR that
-# copied only `src/ui` resolved those to a path outside the build
-# context and failed the image build with TS2307, while `bun run
-# build:ui` stayed green everywhere else because a full checkout has the
-# file. Keep the two directories siblings, or the relative specifier
+# The build tree mirrors the repo's own layout — `ui/`, `core/`, and
+# `client/` as siblings — because the SPA imports shared modules across
+# those seams: `src/ui/src/api/types.ts` does
+# `from "../../../core/wire.ts"` (warren-b229) and
+# `src/ui/src/api/client.ts` does `from "../../../client/ndjson.ts"`
+# (warren-53a7). `src/ui/tsconfig.app.json` lists each out-of-tree file
+# in its `include`. A flat WORKDIR that copied only `src/ui` resolved
+# those to a path outside the build context and failed the image build
+# with TS2307, while `bun run build:ui` stayed green everywhere else
+# because a full checkout has the files. Every out-of-tree entry in
+# that `include` list needs a matching COPY below, or the image build
 # breaks again.
 FROM oven/bun:1.2 AS ui-builder
 WORKDIR /build/ui
 COPY src/core /build/core
+COPY src/client/ndjson.ts src/client/errors.ts /build/client/
 COPY src/ui/package.json src/ui/bun.lock src/ui/tsconfig.json ./
 COPY src/ui/tsconfig.app.json src/ui/tsconfig.node.json ./
 COPY src/ui/vite.config.ts src/ui/index.html ./
