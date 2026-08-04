@@ -35,7 +35,6 @@ The brake on all three is PHILOSOPHY rule 1: features pay for seams. Work with n
 
 ## Now — in flight
 
-- **Hygiene residue** — what remains of the v0.13.1 truth-and-hygiene pass. `closeSeedId` deleted per rule 8 (warren-11e4). The finalize holdouts generalized in one contract touch (warren-357c). `commit` now takes opaque artifact keys. The merge and commit stage names derive from them.
 - **Agent-facing CLI + npm publish** `[plan: not yet filed]`. Step 5 of that plan is also `AgentRuntimeAdapter` phase 1 item 10: one event-envelope extractor in `src/core`, three consumers. The docker-build CI gate shipped in v0.13.0, so the npm publish step no longer inherits the release-before-artifact failure.
 
 ## Next — planned, in order
@@ -79,6 +78,9 @@ Honest replacements for old sequencing steps with no payer. Each entry names its
 | Truth-and-hygiene pass — doc truth pass, rule-8 deletions, full lifecycle-bus emit coverage | v0.13.1 | warren-ab7a, warren-801e, warren-28ca |
 | Self-host hardening — local `baseBranch` forward, salvage-before-destroy, functional bwrap probe | v0.13.1 | pl-1c02 |
 | Seam precursors — capability flags, `rate_limited` class, wider wire stems, scrubber redaction | v0.13.1 | warren-9bbc |
+| Hygiene residue — `closeSeedId` deletion, finalize holdouts generalized to opaque artifact keys | v0.13.2 | warren-11e4, warren-357c |
+| Security hardening pass — route-param traversal fix, preview origin split, public-projection leak sweep, security headers | v0.13.2 | warren-7c1e, warren-3f8a, [SECURITY.md](SECURITY.md) |
+| SPEC retirement — living contracts salvaged into `docs/design/` records, AGENTS.md canonical | v0.13.2 | warren-6fe3, warren-b771, [docs/design/](docs/design/) |
 
 ## Deliberately not in core
 
@@ -107,7 +109,7 @@ Honest tombstones. A removed feature can return as an extension when someone wan
 | Fly.io deploy path | v0.10.0 | Superseded by the container image plus GKE. See `docs/RUNBOOK-K8S.md`. |
 | Pause machinery (`markPaused`, `question_posed` remnants) | v0.13.1 | Dead since the plot deletion. No non-test caller. |
 | `mergePullRequest` | v0.13.1 | Built for the deleted Plot PR surface. No production caller. |
-| Cross-repo plan-run routing (pl-fb43) | v0.13.x (unshipped release line) | Seeds-bound machinery built ahead of the IssueTracker seam; no payer. Deleted per rule 8; the execution-vs-coordination project split survives as an IssueTracker design input. |
+| Cross-repo plan-run routing (pl-fb43) | v0.13.2 | Seeds-bound machinery built ahead of the IssueTracker seam; no payer. Deleted per rule 8; the execution-vs-coordination project split survives as an IssueTracker design input. |
 
 ## Under evaluation
 
