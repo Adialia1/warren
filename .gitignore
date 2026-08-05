@@ -26,7 +26,6 @@ supabase/
 # calls). Never commit — see sd warren-4c8d.
 .pi/sessions/
 .idea/
-.vscode/
 test-results/
 coverage/
 
@@ -42,3 +41,7 @@ deploy/k8s/overlays/gke-live/
 # plan. Thinking-in-progress lives here so it has a home outside the tracker
 # and outside git history; promote anything durable into docs or `sd plan`.
 local-planning/
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
